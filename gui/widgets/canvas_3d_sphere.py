@@ -32,10 +32,10 @@ class Canvas3DSphere(QOpenGLWidget):
         # Parámetros geométricos de la esfera
         self.radius = 1.0
 
-        # Parámetros de la cámara orbital
+        # Parámetros de la cámara orbital (Esfera aumentada para ocupar casi todo el lienzo)
         self.yaw = 0.0          # Rotación horizontal en grados
         self.pitch = 15.0       # Rotación vertical en grados (-85° a 85°)
-        self.cam_distance = 2.8 # Distancia de la cámara al centro (zoom)
+        self.cam_distance = 2.22 # Distancia optimizada para que la esfera sea más grande y accesible
 
         # Estado del ratón
         self.last_mouse_pos = None
@@ -69,7 +69,7 @@ class Canvas3DSphere(QOpenGLWidget):
         """Restablece la orientación de la cámara al punto de vista canónico frontal."""
         self.yaw = 0.0
         self.pitch = 15.0
-        self.cam_distance = 2.8
+        self.cam_distance = 2.22
         self.update()
 
     def set_projection_3d(self, trajectory_3d, projected_char="", prob_perc=""):

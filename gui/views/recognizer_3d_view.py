@@ -2,18 +2,21 @@
 recognizer_3d_view.py
 =====================
 Ventana C: Reconocedor y Visualizador 3D (Lienzo Esférico OpenGL).
-Integra:
-- Lado Izquierdo: Lienzo esférico OpenGL con soporte para dibujo sobre la superficie,
-  conversión a coordenadas angulares esféricas (theta, phi), rotación orbital y zoom,
-  y proyección dinámica 3D de la trayectoria estimada.
-- Lado Derecho: Mismo Panel de clasificación y probabilidades en tiempo real.
-- Barra Superior: Botones de navegación, limpiar trazo y centrar vista de cámara.
+Diseño optimizado:
+- La esfera 3D es significativamente más grande y ocupa TODO el recuadro disponible.
+- Botón 'Inicio' con logo de casita.
+- Botón 'Centrar Cámara' con icono de flecha circular.
+- Botón 'Limpiar Esfera' con icono de borrador.
+- Eliminación de espacios vacíos para maximizar la superficie de dibujo.
+- Panel derecho de clasificación y probabilidades en tiempo real.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+import os
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSplitter, QFrame
+    QSplitter, QFrame, QSizePolicy
 )
 
 from engine.feature_extractor import FeatureExtractor
@@ -33,33 +36,18 @@ class Recognizer3DView(QWidget):
         self.classifier = classifier
         self.icons_dir = icons_dir
 
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 12, 16, 16)
-        main_layout.setSpacing(10)
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        self.ui_dir = os.path.join(base_dir, "data", "icons", "ui")
 
-        # 1. Barra Superior de Control y Navegación
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(12, 10, 12, 12)
+        main_layout.setSpacing(8)
+
+        # 1. Barra Superior de Control y Navegación con Iconos
         top_bar = self._create_top_bar()
         main_layout.addWidget(top_bar)
 
-        # 2. Barra informativa de controles 3D
-        hint_bar = QLabel(
-            "💡 Guía de Interacción 3D:  "
-            "• Clic Izquierdo sobre la esfera: Dibujar trazo  |  "
-            "• Clic Derecho / Arrastre fuera: Rotar esfera 360°  |  "
-            "• Rueda del ratón: Zoom"
-        )
-        hint_bar.setStyleSheet("""
-            background-color: #161b22;
-            color: #8b949e;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 11px;
-            font-weight: 500;
-        """)
-        main_layout.addWidget(hint_bar)
-
-        # 3. Splitter Horizontal (Lienzo 3D Izquierda / Panel de Clasificación Derecha)
+        # 2. Contenedor Principal Dividido (Splitter Izquierda / Derecha)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(8)
         splitter.setStyleSheet("""
@@ -72,19 +60,43 @@ class Recognizer3DView(QWidget):
             }
         """)
 
-        # Sección Izquierda: Lienzo 3D Esférico
+        # Sección Izquierda: Contenedor del Lienzo 3D a pantalla completa
         left_container = QFrame()
         left_container.setObjectName("cardFrame")
+        left_container.setStyleSheet("""
+            QFrame#cardFrame {
+                background-color: #0b0e14;
+                border: 1px solid #30363d;
+                border-radius: 12px;
+                padding: 0px;
+            }
+        """)
         left_layout = QVBoxLayout(left_container)
-        left_layout.setContentsMargins(10, 10, 10, 10)
-        left_layout.setSpacing(8)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
 
+        # Lienzo 3D OpenGL esférico ocupando el 100% del área
         self.canvas_3d = Canvas3DSphere(self)
-        left_layout.addWidget(self.canvas_3d)
+        self.canvas_3d.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        left_layout.addWidget(self.canvas_3d, stretch=1)
+
+        # Barra de estado inferior compacta
+        self.stats_bar = QFrame()
+        self.stats_bar.setFixedHeight(28)
+        self.stats_bar.setStyleSheet("background-color: #0e1219; border-top: 1px solid #21262d; border-radius: 0 0 12px 12px;")
+        sb_layout = QHBoxLayout(self.stats_bar)
+        sb_layout.setContentsMargins(14, 0, 14, 0)
 
         self.stats_label = QLabel("Puntos sobre la esfera: 0  |  Variaciones tangenciales (Δθ, Δϕ): 0")
         self.stats_label.setStyleSheet("color: #8b949e; font-size: 11px; font-weight: 500;")
-        left_layout.addWidget(self.stats_label)
+        sb_layout.addWidget(self.stats_label)
+
+        hint_quick = QLabel("Arrastrar: rotar 360° | Rueda: zoom")
+        hint_quick.setStyleSheet("color: #484f58; font-size: 11px;")
+        hint_quick.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        sb_layout.addWidget(hint_quick)
+
+        left_layout.addWidget(self.stats_bar)
 
         splitter.addWidget(left_container)
 
@@ -92,16 +104,17 @@ class Recognizer3DView(QWidget):
         self.ranking_panel = RankingPanel(icons_dir=self.icons_dir, parent=self)
         splitter.addWidget(self.ranking_panel)
 
-        splitter.setStretchFactor(0, 7)
-        splitter.setStretchFactor(1, 3)
+        # Proporción: 72% lienzo para esfera grande, 28% ranking
+        splitter.setStretchFactor(0, 72)
+        splitter.setStretchFactor(1, 28)
 
-        main_layout.addWidget(splitter)
+        main_layout.addWidget(splitter, stretch=1)
 
         # Conectar actualización del trazo 3D
         self.canvas_3d.stroke_3d_updated.connect(self._on_stroke_3d_updated)
 
     def _create_top_bar(self):
-        """Crea la barra superior de controles 3D."""
+        """Crea la barra superior con botones de casita, flecha circular y borrador."""
         bar = QFrame()
         bar.setFixedHeight(54)
         bar.setStyleSheet("""
@@ -117,12 +130,24 @@ class Recognizer3DView(QWidget):
         layout.setContentsMargins(8, 0, 8, 0)
         layout.setSpacing(12)
 
-        btn_back = QPushButton("← Volver al Menú")
-        btn_back.setProperty("class", "navButton")
-        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_back.clicked.connect(self.navigate_to_menu.emit)
-        layout.addWidget(btn_back)
+        # 1. Botón Inicio con icono de casita (sin texto)
+        btn_home = QPushButton()
+        btn_home.setProperty("class", "iconButton")
+        btn_home.setFixedSize(40, 40)
+        btn_home.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_home.setToolTip("Inicio / Volver al Menú Principal")
 
+        home_icon_path = os.path.join(self.ui_dir, "home.png")
+        if not os.path.exists(home_icon_path):
+            home_icon_path = os.path.join(self.ui_dir, "home.svg")
+        if os.path.exists(home_icon_path):
+            btn_home.setIcon(QIcon(home_icon_path))
+            btn_home.setIconSize(QSize(22, 22))
+
+        btn_home.clicked.connect(self.navigate_to_menu.emit)
+        layout.addWidget(btn_home)
+
+        # Título del modo
         title = QLabel("MODO 3D: LIENZO ESFÉRICO (OPENGL)")
         title.setStyleSheet("color: #f0f6fc; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;")
         layout.addWidget(title)
@@ -141,15 +166,37 @@ class Recognizer3DView(QWidget):
 
         layout.addStretch()
 
-        btn_reset_cam = QPushButton("Centrar Cámara")
-        btn_reset_cam.setProperty("class", "navButton")
+        # 2. Botón Centrar Cámara con SVG center_focus (sin texto)
+        btn_reset_cam = QPushButton()
+        btn_reset_cam.setProperty("class", "iconButton")
+        btn_reset_cam.setFixedSize(40, 40)
         btn_reset_cam.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_reset_cam.setToolTip("Centrar Cámara (Center Focus)")
+
+        center_icon_path = os.path.join(self.ui_dir, "center_focus.png")
+        if not os.path.exists(center_icon_path):
+            center_icon_path = os.path.join(self.ui_dir, "center_focus.svg")
+        if os.path.exists(center_icon_path):
+            btn_reset_cam.setIcon(QIcon(center_icon_path))
+            btn_reset_cam.setIconSize(QSize(22, 22))
+
         btn_reset_cam.clicked.connect(self.reset_camera)
         layout.addWidget(btn_reset_cam)
 
-        btn_clear = QPushButton("Limpiar Esfera")
-        btn_clear.setProperty("class", "dangerButton")
+        # 3. Botón Limpiar Esfera con SVG de borrador/clear-format (sin texto)
+        btn_clear = QPushButton()
+        btn_clear.setProperty("class", "iconButtonDanger")
+        btn_clear.setFixedSize(40, 40)
         btn_clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_clear.setToolTip("Limpiar Esfera (Clear Format)")
+
+        clear_icon_path = os.path.join(self.ui_dir, "clear.png")
+        if not os.path.exists(clear_icon_path):
+            clear_icon_path = os.path.join(self.ui_dir, "clear.svg")
+        if os.path.exists(clear_icon_path):
+            btn_clear.setIcon(QIcon(clear_icon_path))
+            btn_clear.setIconSize(QSize(22, 22))
+
         btn_clear.clicked.connect(self.clear_canvas)
         layout.addWidget(btn_clear)
 

@@ -130,6 +130,39 @@ QPushButton.dangerButton:hover {
     color: #ffffff;
 }
 
+/* Botones de Iconos SVG Minimalistas */
+QPushButton.iconButton {
+    background-color: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 9px;
+    padding: 0px;
+}
+
+QPushButton.iconButton:hover {
+    background-color: #30363d;
+    border-color: #00d2ff;
+}
+
+QPushButton.iconButton:pressed {
+    background-color: #161b22;
+}
+
+QPushButton.iconButtonDanger {
+    background-color: #21262d;
+    border: 1px solid #482326;
+    border-radius: 9px;
+    padding: 0px;
+}
+
+QPushButton.iconButtonDanger:hover {
+    background-color: #3e1b1e;
+    border-color: #f85149;
+}
+
+QPushButton.iconButtonDanger:pressed {
+    background-color: #2a1215;
+}
+
 /* Barras de progreso */
 QProgressBar {
     background-color: #21262d;

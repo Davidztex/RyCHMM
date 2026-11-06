@@ -2,16 +2,20 @@
 recognizer_2d_view.py
 =====================
 Ventana B: Reconocedor y Visualizador 2D (Plano Cartesiano).
-Integra:
-- Lado Izquierdo: Lienzo 2D interactivo de trazado y proyección de trayectoria dinámica.
-- Lado Derecho: Panel de clasificación probabilística en tiempo real con ranking y miniaturas.
-- Barra Superior: Controles de navegación, limpiar lienzo, reiniciar captura y estadísticas de trazo.
+Diseño optimizado:
+- El lienzo de dibujo ocupa TODO el recuadro disponible, eliminando espacios vacíos.
+- Botón 'Inicio' con logo de casita.
+- Botón 'Reiniciar Captura' con icono de flecha circular.
+- Botón 'Limpiar Lienzo' con icono de borrador.
+- Panel derecho de clasificación y probabilidades en tiempo real.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
+import os
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSplitter, QFrame
+    QSplitter, QFrame, QSizePolicy
 )
 
 from engine.feature_extractor import FeatureExtractor
@@ -31,11 +35,14 @@ class Recognizer2DView(QWidget):
         self.classifier = classifier
         self.icons_dir = icons_dir
 
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 12, 16, 16)
-        main_layout.setSpacing(10)
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        self.ui_dir = os.path.join(base_dir, "data", "icons", "ui")
 
-        # 1. Barra Superior de Control y Navegación
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(12, 10, 12, 12)
+        main_layout.setSpacing(8)
+
+        # 1. Barra Superior de Control y Navegación con Iconos
         top_bar = self._create_top_bar()
         main_layout.addWidget(top_bar)
 
@@ -52,20 +59,43 @@ class Recognizer2DView(QWidget):
             }
         """)
 
-        # Sección Izquierda: Contenedor del Lienzo 2D
+        # Sección Izquierda: Contenedor del Lienzo 2D a pantalla completa
         left_container = QFrame()
         left_container.setObjectName("cardFrame")
+        left_container.setStyleSheet("""
+            QFrame#cardFrame {
+                background-color: #0b0e14;
+                border: 1px solid #30363d;
+                border-radius: 12px;
+                padding: 0px;
+            }
+        """)
         left_layout = QVBoxLayout(left_container)
-        left_layout.setContentsMargins(10, 10, 10, 10)
-        left_layout.setSpacing(8)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
 
+        # Lienzo 2D ocupando el 100% del área
         self.canvas = Canvas2D(self)
-        left_layout.addWidget(self.canvas)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        left_layout.addWidget(self.canvas, stretch=1)
 
-        # Barra de estado inferior del lienzo
+        # Barra de estado inferior compacta
+        self.stats_bar = QFrame()
+        self.stats_bar.setFixedHeight(28)
+        self.stats_bar.setStyleSheet("background-color: #0e1219; border-top: 1px solid #21262d; border-radius: 0 0 12px 12px;")
+        sb_layout = QHBoxLayout(self.stats_bar)
+        sb_layout.setContentsMargins(14, 0, 14, 0)
+
         self.stats_label = QLabel("Trazos: 0  |  Puntos: 0  |  Símbolos discretos: 0")
         self.stats_label.setStyleSheet("color: #8b949e; font-size: 11px; font-weight: 500;")
-        left_layout.addWidget(self.stats_label)
+        sb_layout.addWidget(self.stats_label)
+
+        hint_quick = QLabel("Atajo: [C] o [Espacio] para limpiar")
+        hint_quick.setStyleSheet("color: #484f58; font-size: 11px;")
+        hint_quick.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        sb_layout.addWidget(hint_quick)
+
+        left_layout.addWidget(self.stats_bar)
 
         splitter.addWidget(left_container)
 
@@ -73,17 +103,17 @@ class Recognizer2DView(QWidget):
         self.ranking_panel = RankingPanel(icons_dir=self.icons_dir, parent=self)
         splitter.addWidget(self.ranking_panel)
 
-        # Configurar proporción inicial (70% lienzo, 30% panel de ranking)
-        splitter.setStretchFactor(0, 7)
-        splitter.setStretchFactor(1, 3)
+        # Configurar proporción inicial (72% lienzo para máximo espacio, 28% ranking)
+        splitter.setStretchFactor(0, 72)
+        splitter.setStretchFactor(1, 28)
 
-        main_layout.addWidget(splitter)
+        main_layout.addWidget(splitter, stretch=1)
 
         # Conectar señales del lienzo al procesador de inferencia
         self.canvas.stroke_updated.connect(self._on_stroke_updated)
 
     def _create_top_bar(self):
-        """Crea la barra superior con botones de control y navegación."""
+        """Crea la barra superior con botones de casita, flecha circular y borrador."""
         bar = QFrame()
         bar.setFixedHeight(54)
         bar.setStyleSheet("""
@@ -99,12 +129,24 @@ class Recognizer2DView(QWidget):
         layout.setContentsMargins(8, 0, 8, 0)
         layout.setSpacing(12)
 
-        btn_back = QPushButton("← Volver al Menú")
-        btn_back.setProperty("class", "navButton")
-        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_back.clicked.connect(self.navigate_to_menu.emit)
-        layout.addWidget(btn_back)
+        # 1. Botón Inicio con icono de casita (sin texto)
+        btn_home = QPushButton()
+        btn_home.setProperty("class", "iconButton")
+        btn_home.setFixedSize(40, 40)
+        btn_home.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_home.setToolTip("Inicio / Volver al Menú Principal")
 
+        home_icon_path = os.path.join(self.ui_dir, "home.png")
+        if not os.path.exists(home_icon_path):
+            home_icon_path = os.path.join(self.ui_dir, "home.svg")
+        if os.path.exists(home_icon_path):
+            btn_home.setIcon(QIcon(home_icon_path))
+            btn_home.setIconSize(QSize(22, 22))
+
+        btn_home.clicked.connect(self.navigate_to_menu.emit)
+        layout.addWidget(btn_home)
+
+        # Título del modo
         title = QLabel("MODO 2D: RECONOCEDOR CARTESIANO")
         title.setStyleSheet("color: #f0f6fc; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;")
         layout.addWidget(title)
@@ -123,15 +165,37 @@ class Recognizer2DView(QWidget):
 
         layout.addStretch()
 
-        btn_reset = QPushButton("Reiniciar Captura")
-        btn_reset.setProperty("class", "navButton")
+        # 2. Botón Reiniciar Captura con SVG de retorno (sin texto)
+        btn_reset = QPushButton()
+        btn_reset.setProperty("class", "iconButton")
+        btn_reset.setFixedSize(40, 40)
         btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_reset.setToolTip("Reiniciar Captura (Return)")
+
+        return_icon_path = os.path.join(self.ui_dir, "return.png")
+        if not os.path.exists(return_icon_path):
+            return_icon_path = os.path.join(self.ui_dir, "return.svg")
+        if os.path.exists(return_icon_path):
+            btn_reset.setIcon(QIcon(return_icon_path))
+            btn_reset.setIconSize(QSize(22, 22))
+
         btn_reset.clicked.connect(self.reset_capture)
         layout.addWidget(btn_reset)
 
-        btn_clear = QPushButton("Limpiar Lienzo")
-        btn_clear.setProperty("class", "dangerButton")
+        # 3. Botón Limpiar Lienzo con SVG de borrador/clear-format (sin texto)
+        btn_clear = QPushButton()
+        btn_clear.setProperty("class", "iconButtonDanger")
+        btn_clear.setFixedSize(40, 40)
         btn_clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_clear.setToolTip("Limpiar Lienzo (Clear Format)")
+
+        clear_icon_path = os.path.join(self.ui_dir, "clear.png")
+        if not os.path.exists(clear_icon_path):
+            clear_icon_path = os.path.join(self.ui_dir, "clear.svg")
+        if os.path.exists(clear_icon_path):
+            btn_clear.setIcon(QIcon(clear_icon_path))
+            btn_clear.setIconSize(QSize(22, 22))
+
         btn_clear.clicked.connect(self.clear_canvas)
         layout.addWidget(btn_clear)
 
