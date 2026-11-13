@@ -58,7 +58,7 @@ hmm_recognizer/
 │       └── ranking_panel.py    # Tarjeta Top-1 y listado ordenado P(C | O1:t) con iconos
 │
 └── data/                       # Almacenamiento persistente
-    ├── dataset/                # Dataset de trazos manuscritos (glifo-dataset-2026-11-05.json)
+    ├── dataset/                # Dataset de trazos manuscritos (glifo-dataset-2026-11-12.json)
     ├── models/                 # Modelos serializados estructurados (.json para cada letra y models.json)
     └── icons/                  # Iconos y miniaturas gráficas de las 27 letras (.png)
 ```

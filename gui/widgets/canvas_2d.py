@@ -41,6 +41,9 @@ class Canvas2D(QWidget):
         # Posición actual del cursor
         self.cursor_pos = None
 
+        # Barra de botones flotante en la esquina superior izquierda
+        self.overlay_toolbar = None
+
         self.setStyleSheet("background-color: #0b0e14; border-radius: 12px;")
 
     def clear_canvas(self):
@@ -58,12 +61,18 @@ class Canvas2D(QWidget):
         """Reinicia la captura actual conservando la posición del lienzo."""
         self.clear_canvas()
 
-    def set_projection(self, trajectory_points, projected_char="", prob_perc=""):
+    def set_projection(self, trajectory_data, projected_char="", prob_perc=""):
         """
         Actualiza los puntos de la trayectoria futura estimada y la letra asociada.
-        Se redibuja inmediatamente en tiempo real.
+        trajectory_data puede ser una lista de trazos [[[x, y], ...], ...] o una lista plana.
         """
-        self.projected_trajectory = trajectory_points or []
+        if not trajectory_data:
+            self.projected_trajectory = []
+        elif len(trajectory_data) > 0 and len(trajectory_data[0]) > 0 and isinstance(trajectory_data[0][0], (int, float)):
+            self.projected_trajectory = [trajectory_data]
+        else:
+            self.projected_trajectory = [st for st in trajectory_data if len(st) > 0]
+
         self.projected_char = projected_char
         self.projected_perc = prob_perc
         self.update()
@@ -123,6 +132,18 @@ class Canvas2D(QWidget):
             self.clear_canvas()
         else:
             super().keyPressEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "overlay_toolbar") and self.overlay_toolbar:
+            self.overlay_toolbar.move(14, 14)
+            self.overlay_toolbar.raise_()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "overlay_toolbar") and self.overlay_toolbar:
+            self.overlay_toolbar.move(14, 14)
+            self.overlay_toolbar.raise_()
 
     # -------------------------------------------------------------
     # Renderizado Gráfico
@@ -220,36 +241,56 @@ class Canvas2D(QWidget):
         painter.drawLine(0, mid_y, w, mid_y)
 
     def _draw_projected_trajectory(self, painter):
-        """Renderiza la curva de autocompletado con línea punteada y etiqueta flotante."""
-        if len(self.projected_trajectory) < 2:
+        """
+        Renderiza la trayectoria de autocompletado proyectando TODO el trazo faltante
+        de la letra más probable mediante una constelación de puntos luminosos ('con puntos').
+        """
+        if not self.projected_trajectory:
             return
 
-        # Estilo de proyección: línea punteada dorada/ámbar de alta visibilidad
-        pen_proj = QPen(QColor(255, 183, 3, 220), 2.8)
-        pen_proj.setStyle(Qt.PenStyle.DashLine)
-        pen_proj.setDashPattern([3, 4])
-        pen_proj.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen_proj)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
+        # Línea guía punteada muy fina y sutil para la continuidad visual
+        pen_guide = QPen(QColor(255, 183, 3, 75), 1.4)
+        pen_guide.setStyle(Qt.PenStyle.DashLine)
+        pen_guide.setDashPattern([2, 4])
+        pen_guide.setCapStyle(Qt.PenCapStyle.RoundCap)
 
-        proj_path = QPainterPath()
-        p0 = self.projected_trajectory[0]
-        proj_path.moveTo(p0[0], p0[1])
+        last_pt_overall = None
 
-        for pt in self.projected_trajectory[1:]:
-            proj_path.lineTo(pt[0], pt[1])
-        painter.drawPath(proj_path)
+        for stroke in self.projected_trajectory:
+            if len(stroke) < 1:
+                continue
 
-        # Dibujar pequeños puntos marcadores en la trayectoria proyectada
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(255, 183, 3, 180))
-        for idx, pt in enumerate(self.projected_trajectory):
-            if idx % 3 == 0:
-                painter.drawEllipse(QPointF(pt[0], pt[1]), 2.5, 2.5)
+            last_pt_overall = stroke[-1]
 
-        # Etiqueta flotante con el carácter predicho cerca del final de la proyección
-        if self.projected_char:
-            last_pt = self.projected_trajectory[-1]
+            # 1. Dibujar línea guía punteada sutil
+            if len(stroke) >= 2:
+                painter.setPen(pen_guide)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                path = QPainterPath()
+                path.moveTo(stroke[0][0], stroke[0][1])
+                for pt in stroke[1:]:
+                    path.lineTo(pt[0], pt[1])
+                painter.drawPath(path)
+
+            # 2. Dibujar TODOS LOS PUNTOS faltantes ("con puntos")
+            painter.setPen(Qt.PenStyle.NoPen)
+            for idx, pt in enumerate(stroke):
+                px, py = float(pt[0]), float(pt[1])
+
+                # Resplandor exterior suave del punto
+                painter.setBrush(QColor(255, 183, 3, 70))
+                painter.drawEllipse(QPointF(px, py), 4.5, 4.5)
+
+                # Núcleo nítido y brillante del punto
+                painter.setBrush(QColor(255, 215, 65, 245))
+                painter.drawEllipse(QPointF(px, py), 2.5, 2.5)
+
+                # Destello central blanco
+                painter.setBrush(QColor(255, 255, 255, 220))
+                painter.drawEllipse(QPointF(px, py), 1.0, 1.0)
+
+        # 3. Etiqueta flotante con el carácter predicho y el porcentaje de confianza
+        if self.projected_char and last_pt_overall:
             badge_text = f"Proyección: '{self.projected_char}' ({self.projected_perc})"
 
             font = QFont("Segoe UI", 10, QFont.Weight.Bold)
@@ -258,16 +299,16 @@ class Canvas2D(QWidget):
             text_w = metrics.horizontalAdvance(badge_text) + 16
             text_h = 24
 
-            badge_x = min(float(last_pt[0]) + 10, float(self.width() - text_w - 10))
-            badge_y = max(float(last_pt[1]) - 12, 10.0)
+            badge_x = min(float(last_pt_overall[0]) + 12, float(self.width() - text_w - 12))
+            badge_y = max(float(last_pt_overall[1]) - 14, 12.0)
 
             badge_rect = QRectF(badge_x, badge_y, text_w, text_h)
 
             # Fondo del badge
-            painter.setBrush(QColor(22, 27, 34, 230))
+            painter.setBrush(QColor(22, 27, 34, 235))
             painter.setPen(QPen(QColor(255, 183, 3, 200), 1.2))
             painter.drawRoundedRect(badge_rect, 6, 6)
 
             # Texto del badge
-            painter.setPen(QColor(255, 200, 50))
+            painter.setPen(QColor(255, 210, 60))
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, badge_text)

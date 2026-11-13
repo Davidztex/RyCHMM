@@ -7,7 +7,7 @@ con tarjeta destacada Top-1, barras de progreso y miniaturas de referencia de la
 """
 
 import os
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
@@ -20,10 +20,13 @@ from engine.hmm_engine import SPANISH_ALPHABET
 class LetterRowWidget(QFrame):
     """Fila visual individual para una letra en la lista de clasificación."""
 
+    clicked = pyqtSignal(str)
+
     def __init__(self, char, icons_dir, parent=None):
         super().__init__(parent)
         self.char = char
         self.icons_dir = icons_dir
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.setFixedHeight(48)
         self.setStyleSheet("""
@@ -135,12 +138,18 @@ class LetterRowWidget(QFrame):
 
         self.setToolTip(f"Carácter: '{self.char}'\nProbabilidad P: {prob:.4f} ({percentage})\nLog-Verosimilitud ln P: {log_lik:.2f}")
 
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.clicked.emit(self.char)
+
 
 class RankingPanel(QWidget):
     """
     Panel vertical de clasificación en tiempo real según P(Carácter | O_{1:t}).
     Incluye Hero Card para el candidato Top-1 y lista scrollable de las 27 letras.
     """
+
+    letter_selected = pyqtSignal(str)
 
     def __init__(self, icons_dir=None, parent=None):
         super().__init__(parent)
@@ -236,6 +245,7 @@ class RankingPanel(QWidget):
         self.row_widgets = {}
         for char in SPANISH_ALPHABET:
             row = LetterRowWidget(char, self.icons_dir, self)
+            row.clicked.connect(self.letter_selected.emit)
             self.row_widgets[char] = row
             self.rows_layout.addWidget(row)
 

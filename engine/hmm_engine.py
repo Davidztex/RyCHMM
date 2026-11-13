@@ -492,10 +492,12 @@ class MultiCharacterClassifier:
         results = self.classify(obs_sequence)
         return results[0]["char"] if results else "a"
 
-    def predict_trajectory_symbols(self, obs_sequence, top_char=None, horizon=20):
-        """
-        Retorna la secuencia de símbolos discretos proyectados para el autocompletado.
-        Si no se especifica top_char, se toma el de mayor verosimilitud actual.
+    def predict_trajectory_symbols(self, obs_sequence, top_char=None, horizon=None):
+        r"""
+        Implementa estrictamente el Modelo de Proyección de Trayectoria Futura (Sección 3.5):
+        1. Dada la secuencia parcial O_{1:t}, se evalúa la verosimilitud P(O_{1:t} | \lambda_c) usando Forward.
+        2. Se identifica el carácter de máxima probabilidad: \hat{c} = \arg\max_c P(O_{1:t} | \lambda_c).
+        3. Utilizando la trayectoria aprendida del modelo \lambda_{\hat{c}}, se extraen los símbolos restantes {O_{t+1}, ..., O_T}.
         """
         if not top_char:
             top_char = self.get_best_character(obs_sequence)
@@ -504,13 +506,26 @@ class MultiCharacterClassifier:
         if not model:
             return []
 
-        # Si el modelo tiene trayectoria canónica aprendida y podemos sincronizarla:
-        if model.canonical_symbols:
-            T_drawn = len(obs_sequence)
-            canon_len = len(model.canonical_symbols)
-            if T_drawn < canon_len:
-                # Extrae los símbolos restantes de la forma canónica
-                return model.canonical_symbols[T_drawn:T_drawn + horizon]
+        # Evaluar forward para obtener el estado latente actual alpha_t(i)
+        if obs_sequence:
+            _, alpha_hat, _ = model.forward(obs_sequence)
+            alpha_last = alpha_hat[-1]
+            exp_state = float(np.sum(np.arange(model.N) * alpha_last))
+            tau = float(np.clip((exp_state + 0.5) / float(model.N), 0.05, 0.95))
+        else:
+            tau = 0.05
 
-        # En su defecto, proyecta mediante la secuencia de estados latentes de HMM
-        return model.predict_future_symbols(obs_sequence, horizon=horizon)
+        # Obtener símbolos aprendidos del modelo
+        learned_syms = model.canonical_symbols
+        if not learned_syms:
+            from training.synthetic_generator import SyntheticGlyphGenerator
+            canon = SyntheticGlyphGenerator.get_canonical_strokes(top_char)
+            from engine.feature_extractor import FeatureExtractor
+            learned_syms, _ = FeatureExtractor.extract_symbols_from_strokes_2d(canon, step=4.5)
+
+        T_total = len(learned_syms)
+        t_anchor = int(np.clip(round(tau * T_total), 1, T_total))
+        remaining = learned_syms[t_anchor:]
+        if horizon is not None:
+            remaining = remaining[:horizon]
+        return remaining

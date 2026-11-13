@@ -79,6 +79,9 @@ class Recognizer2DView(QWidget):
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         left_layout.addWidget(self.canvas, stretch=1)
 
+        # Barra flotante de herramientas (reseteo y limpieza) en la esquina superior izquierda del lienzo
+        self._create_canvas_overlay()
+
         # Barra de estado inferior compacta
         self.stats_bar = QFrame()
         self.stats_bar.setFixedHeight(28)
@@ -110,7 +113,17 @@ class Recognizer2DView(QWidget):
         main_layout.addWidget(splitter, stretch=1)
 
         # Conectar señales del lienzo al procesador de inferencia
+        self.selected_target_char = None
         self.canvas.stroke_updated.connect(self._on_stroke_updated)
+        self.ranking_panel.letter_selected.connect(self._on_letter_selected)
+
+    def _on_letter_selected(self, char: str):
+        """Permite al usuario fijar manualmente la proyección a una letra específica."""
+        self.selected_target_char = char
+        # Re-proyectar si hay trazos
+        strokes = self.canvas.strokes
+        if strokes:
+            self._on_stroke_updated(strokes)
 
     def _create_top_bar(self):
         """Crea la barra superior con botones de casita, flecha circular y borrador."""
@@ -164,11 +177,28 @@ class Recognizer2DView(QWidget):
         layout.addWidget(badge)
 
         layout.addStretch()
+        return bar
 
-        # 2. Botón Reiniciar Captura con SVG de retorno (sin texto)
-        btn_reset = QPushButton()
+    def _create_canvas_overlay(self):
+        """Crea la barra flotante con botones de reseteo en la esquina superior izquierda del lienzo."""
+        overlay = QFrame(self.canvas)
+        overlay.setObjectName("canvasOverlayBar")
+        overlay.setStyleSheet("""
+            QFrame#canvasOverlayBar {
+                background-color: rgba(22, 27, 34, 0.88);
+                border: 1px solid #30363d;
+                border-radius: 9px;
+            }
+        """)
+
+        layout = QHBoxLayout(overlay)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
+
+        # 1. Botón Reiniciar Captura con SVG de retorno (sin texto)
+        btn_reset = QPushButton(overlay)
         btn_reset.setProperty("class", "iconButton")
-        btn_reset.setFixedSize(40, 40)
+        btn_reset.setFixedSize(36, 36)
         btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_reset.setToolTip("Reiniciar Captura (Return)")
 
@@ -177,15 +207,15 @@ class Recognizer2DView(QWidget):
             return_icon_path = os.path.join(self.ui_dir, "return.svg")
         if os.path.exists(return_icon_path):
             btn_reset.setIcon(QIcon(return_icon_path))
-            btn_reset.setIconSize(QSize(22, 22))
+            btn_reset.setIconSize(QSize(20, 20))
 
         btn_reset.clicked.connect(self.reset_capture)
         layout.addWidget(btn_reset)
 
-        # 3. Botón Limpiar Lienzo con SVG de borrador/clear-format (sin texto)
-        btn_clear = QPushButton()
+        # 2. Botón Limpiar Lienzo con SVG de borrador/clear-format (sin texto)
+        btn_clear = QPushButton(overlay)
         btn_clear.setProperty("class", "iconButtonDanger")
-        btn_clear.setFixedSize(40, 40)
+        btn_clear.setFixedSize(36, 36)
         btn_clear.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_clear.setToolTip("Limpiar Lienzo (Clear Format)")
 
@@ -194,21 +224,33 @@ class Recognizer2DView(QWidget):
             clear_icon_path = os.path.join(self.ui_dir, "clear.svg")
         if os.path.exists(clear_icon_path):
             btn_clear.setIcon(QIcon(clear_icon_path))
-            btn_clear.setIconSize(QSize(22, 22))
+            btn_clear.setIconSize(QSize(20, 20))
 
         btn_clear.clicked.connect(self.clear_canvas)
         layout.addWidget(btn_clear)
 
-        return bar
+        # Evitar que hacer clic o arrastrar en el marco del overlay dibuje sobre el lienzo
+        overlay.mousePressEvent = lambda e: e.accept()
+        overlay.mouseMoveEvent = lambda e: e.accept()
+        overlay.mouseReleaseEvent = lambda e: e.accept()
+
+        overlay.adjustSize()
+        overlay.move(14, 14)
+        overlay.show()
+        overlay.raise_()
+
+        self.canvas.overlay_toolbar = overlay
 
     def clear_canvas(self):
         """Limpia trazos y restablece el panel de ranking."""
+        self.selected_target_char = None
         self.canvas.clear_canvas()
         self.ranking_panel.reset_display()
         self.stats_label.setText("Trazos: 0  |  Puntos: 0  |  Símbolos discretos: 0")
 
     def reset_capture(self):
         """Reinicia la captura actual."""
+        self.selected_target_char = None
         self.canvas.reset_capture()
         self.ranking_panel.reset_display()
         self.stats_label.setText("Trazos: 0  |  Puntos: 0  |  Símbolos discretos: 0")
@@ -216,7 +258,8 @@ class Recognizer2DView(QWidget):
     def _on_stroke_updated(self, strokes):
         """
         Slot invocado en tiempo real cada vez que el usuario dibuja o añade puntos.
-        Ejecuta la discretización, evaluación Forward en los 27 HMMs y autocompletado espacial.
+        Ejecuta la discretización, evaluación Forward en los 27 HMMs y autocompletado espacial
+        proyectando todo el trazo faltante con puntos.
         """
         if not strokes:
             self.ranking_panel.reset_display()
@@ -224,9 +267,21 @@ class Recognizer2DView(QWidget):
             self.stats_label.setText("Trazos: 0  |  Puntos: 0  |  Símbolos discretos: 0")
             return
 
-        # 1. Extraer símbolos discretos K=16 a partir de las coordenadas
-        symbols, resampled_strokes = FeatureExtractor.extract_symbols_from_strokes_2d(strokes, step=12.0)
+        # 1. Extraer símbolos discretos K=16 a partir de las coordenadas (invariante a escala)
+        symbols, resampled_strokes = FeatureExtractor.extract_symbols_from_strokes_2d(strokes)
         total_pts = sum(len(st) for st in strokes)
+
+        # Si aún no hay símbolos remuestreados pero hay al menos 2 puntos en el trazo actual:
+        # Extraer el vector directo para tener un símbolo inicial inmediato
+        if len(symbols) == 0 and strokes and len(strokes[-1]) >= 2:
+            p_start = strokes[-1][0]
+            p_last = strokes[-1][-1]
+            dx = p_last[0] - p_start[0]
+            dy = p_last[1] - p_start[1]
+            if dx * dx + dy * dy >= 16.0:  # Mínimo 4 píxeles de desplazamiento
+                s0 = FeatureExtractor.quantize_angle_2d(dx, dy)
+                symbols = [s0]
+
         self.stats_label.setText(
             f"Trazos: {len(strokes)}  |  Puntos: {total_pts}  |  "
             f"Símbolos discretos (K=16): {len(symbols)}"
@@ -237,27 +292,19 @@ class Recognizer2DView(QWidget):
             self.canvas.set_projection([])
             return
 
-        # 2. Evaluación Forward y cálculo de probabilidades posteriores
+        # 2. Evaluación Forward y cálculo de probabilidades posteriores en tiempo real
         results = self.classifier.classify(symbols)
         self.ranking_panel.update_ranking(results)
 
-        # 3. Autocompletado espacial (Proyección de Trayectoria Futura)
-        top1 = results[0]
-        top_char = top1["char"]
-        top_perc = top1["percentage"]
+        # 3. Autocompletado espacial dinámico: todo el trazo faltante de la letra más probable con puntos
+        top_char = self.selected_target_char if self.selected_target_char else results[0]["char"]
+        top_match = next((r for r in results if r["char"] == top_char), results[0])
+        top_perc = top_match["percentage"]
 
-        future_symbols = self.classifier.predict_trajectory_symbols(symbols, top_char=top_char, horizon=18)
+        projected_strokes = FeatureExtractor.predict_complete_projection_2d(
+            strokes=strokes,
+            top_char=top_char,
+            classifier=self.classifier
+        )
 
-        start_pt = self.canvas.cursor_pos
-        if start_pt is None and strokes and strokes[-1]:
-            start_pt = (strokes[-1][-1][0], strokes[-1][-1][1])
-
-        if future_symbols and start_pt:
-            projected_traj = FeatureExtractor.reconstruct_trajectory_2d(
-                start_pos=start_pt,
-                symbols=future_symbols,
-                step=12.0
-            )
-            self.canvas.set_projection(projected_traj, projected_char=top_char, prob_perc=top_perc)
-        else:
-            self.canvas.set_projection([], projected_char=top_char, prob_perc=top_perc)
+        self.canvas.set_projection(projected_strokes, projected_char=top_char, prob_perc=top_perc)

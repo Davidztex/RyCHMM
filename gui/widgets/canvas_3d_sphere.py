@@ -54,6 +54,51 @@ class Canvas3DSphere(QOpenGLWidget):
         # Punto 3D actual bajo el cursor (para indicador visual)
         self.hover_point_3d = None
 
+        # Barra de botones flotante en la esquina superior izquierda
+        self.overlay_toolbar = None
+
+    def get_camera_vectors(self):
+        """
+        Retorna la posición de la cámara y los vectores base del frame de cámara en coordenadas del mundo:
+        cam_pos: [x, y, z]
+        cam_right: [x, y, z]  (hacia la derecha en la pantalla del usuario)
+        cam_down:  [x, y, z]  (hacia abajo en la pantalla del usuario)
+        cam_forward: [x, y, z] (hacia la escena/esfera)
+        VT: matriz 3x3 de rotación inversa (mundo = VT @ ojo)
+        """
+        rad_p = math.radians(self.pitch)
+        rad_y = math.radians(self.yaw)
+        cos_p, sin_p = math.cos(rad_p), math.sin(rad_p)
+        cos_y, sin_y = math.cos(rad_y), math.sin(rad_y)
+
+        Rx = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0, cos_p, -sin_p],
+            [0.0, sin_p,  cos_p]
+        ], dtype=np.float64)
+        Ry = np.array([
+            [ cos_y, 0.0, sin_y],
+            [ 0.0,   1.0, 0.0],
+            [-sin_y, 0.0, cos_y]
+        ], dtype=np.float64)
+        V = Rx @ Ry
+        VT = V.T
+
+        cam_pos = VT @ np.array([0.0, 0.0, self.cam_distance], dtype=np.float64)
+        cam_right = VT @ np.array([1.0, 0.0, 0.0], dtype=np.float64)
+        cam_up = VT @ np.array([0.0, 1.0, 0.0], dtype=np.float64)
+        cam_down = -cam_up
+        cam_forward = VT @ np.array([0.0, 0.0, -1.0], dtype=np.float64)
+
+        return cam_pos, cam_right, cam_down, cam_forward, VT
+
+    def get_current_strokes_payload(self):
+        """Retorna la lista completa de trazos 3D (completados + activo actual)."""
+        payload = [list(st) for st in self.all_completed_strokes_3d if len(st) >= 2]
+        if len(self.stroke_points_3d) >= 1:
+            payload.append(list(self.stroke_points_3d))
+        return payload
+
     def clear_canvas(self):
         """Limpia los trazos y proyecciones de la esfera."""
         self.stroke_points_3d.clear()
@@ -72,9 +117,15 @@ class Canvas3DSphere(QOpenGLWidget):
         self.cam_distance = 2.22
         self.update()
 
-    def set_projection_3d(self, trajectory_3d, projected_char="", prob_perc=""):
+    def set_projection_3d(self, trajectory_data, projected_char="", prob_perc=""):
         """Actualiza la trayectoria proyectada en 3D sobre la esfera."""
-        self.projected_trajectory_3d = trajectory_3d or []
+        if not trajectory_data:
+            self.projected_trajectory_3d = []
+        elif len(trajectory_data) > 0 and len(trajectory_data[0]) > 0 and isinstance(trajectory_data[0][0], (int, float)):
+            self.projected_trajectory_3d = [trajectory_data]
+        else:
+            self.projected_trajectory_3d = [st for st in trajectory_data if len(st) > 0]
+
         self.projected_char = projected_char
         self.projected_perc = prob_perc
         self.update()
@@ -105,6 +156,18 @@ class Canvas3DSphere(QOpenGLWidget):
         aspect = w / float(h)
         GLU.gluPerspective(45.0, aspect, 0.1, 50.0)
         GL.glMatrixMode(GL.GL_MODELVIEW)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "overlay_toolbar") and self.overlay_toolbar:
+            self.overlay_toolbar.move(14, 14)
+            self.overlay_toolbar.raise_()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "overlay_toolbar") and self.overlay_toolbar:
+            self.overlay_toolbar.move(14, 14)
+            self.overlay_toolbar.raise_()
 
     def paintGL(self):
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
@@ -215,32 +278,41 @@ class Canvas3DSphere(QOpenGLWidget):
             self._render_single_stroke_3d(st, color, line_width)
 
     def _render_projected_trajectory_3d(self):
-        """Renderiza la proyección futura 3D con línea punteada ámbar sobre la esfera."""
-        if len(self.projected_trajectory_3d) < 2:
+        """
+        Renderiza la proyección futura 3D completando TODO el trazo faltante
+        sobre el cascarón esférico mediante una constelación de puntos luminosos (GL_POINTS).
+        """
+        if not self.projected_trajectory_3d:
             return
 
-        scale = 1.006  # Ligeramente por encima del trazo
-        GL.glLineWidth(3.0)
-        GL.glColor4f(1.0, 0.72, 0.05, 0.95)  # Ámbar brillante
+        scale = 1.008  # Ligeramente por encima de la superficie de la esfera para evitar z-fighting
 
-        # Habilitar estriado para punteado en OpenGL clásico
-        GL.glEnable(GL.GL_LINE_STIPPLE)
-        GL.glLineStipple(2, 0x0F0F)
+        for stroke in self.projected_trajectory_3d:
+            if len(stroke) < 1:
+                continue
 
-        GL.glBegin(GL.GL_LINE_STRIP)
-        for p in self.projected_trajectory_3d:
-            GL.glVertex3f(p[0] * scale, p[1] * scale, p[2] * scale)
-        GL.glEnd()
+            # 1. Línea guía punteada sutil
+            if len(stroke) >= 2:
+                GL.glEnable(GL.GL_LINE_STIPPLE)
+                GL.glLineStipple(2, 0x0F0F)
+                GL.glLineWidth(1.8)
+                GL.glColor4f(1.0, 0.75, 0.1, 0.45)
+                GL.glBegin(GL.GL_LINE_STRIP)
+                for p in stroke:
+                    GL.glVertex3f(p[0] * scale, p[1] * scale, p[2] * scale)
+                GL.glEnd()
+                GL.glDisable(GL.GL_LINE_STIPPLE)
 
-        GL.glDisable(GL.GL_LINE_STIPPLE)
-
-        # Marcadores de hitos en la trayectoria proyectada
-        GL.glPointSize(4.5)
-        GL.glColor4f(1.0, 0.75, 0.1, 0.8)
-        GL.glBegin(GL.GL_POINTS)
-        for p in self.projected_trajectory_3d[::2]:
-            GL.glVertex3f(p[0] * scale, p[1] * scale, p[2] * scale)
-        GL.glEnd()
+            # 2. Renderizado de TODOS los puntos faltantes ('con puntos')
+            GL.glPointSize(7.0)
+            GL.glEnable(GL.GL_POINT_SMOOTH)
+            GL.glEnable(GL.GL_BLEND)
+            GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+            GL.glColor4f(1.0, 0.84, 0.18, 0.95)  # Ámbar dorado luminoso
+            GL.glBegin(GL.GL_POINTS)
+            for p in stroke:
+                GL.glVertex3f(p[0] * scale, p[1] * scale, p[2] * scale)
+            GL.glEnd()
 
     def _render_hover_point(self):
         """Renderiza un anillo brillante en el punto de contacto del cursor sobre la esfera."""
@@ -257,7 +329,9 @@ class Canvas3DSphere(QOpenGLWidget):
 
     def _screen_to_sphere_raycast(self, mouse_x, mouse_y):
         """
-        Calcula la intersección del rayo que sale de la cámara con la esfera x^2 + y^2 + z^2 = R^2.
+        Calcula la intersección matemática exacta del rayo que sale de la cámara
+        con la esfera x^2 + y^2 + z^2 = R^2 en coordenadas del mundo.
+        Invariante a cualquier rotación orbital (yaw, pitch), zoom y posición.
         Retorna [x, y, z] sobre la superficie o None si el rayo no toca la esfera.
         """
         w = max(self.width(), 1)
@@ -279,40 +353,15 @@ class Canvas3DSphere(QOpenGLWidget):
         ], dtype=np.float64)
         dir_cam /= np.linalg.norm(dir_cam)
 
-        # Transformar origen y dirección a coordenadas del mundo mediante rotación inversa de la cámara
-        rad_pitch = math.radians(self.pitch)
-        rad_yaw = math.radians(self.yaw)
-
-        # Matriz de rotación Rx(pitch) * Ry(yaw)
-        cos_p, sin_p = math.cos(rad_pitch), math.sin(rad_pitch)
-        cos_y, sin_y = math.cos(rad_yaw), math.sin(rad_yaw)
-
-        # Origen de la cámara en el espacio del objeto
-        # La cámara mira a (0,0,0) desde distancia cam_distance a lo largo del eje Z transformado
-        cam_pos_world = np.array([
-            self.cam_distance * sin_y * cos_p,
-            -self.cam_distance * sin_p,
-            self.cam_distance * cos_y * cos_p
-        ], dtype=np.float64)
-
-        # Rotar vector de dirección al espacio del mundo
-        # Primero por pitch (eje X) luego yaw (eje Y)
-        # Inversa: Ry(-yaw) * Rx(-pitch) en sentido opuesto
-        dx_p = dir_cam[0]
-        dy_p = dir_cam[1] * cos_p - dir_cam[2] * sin_p
-        dz_p = dir_cam[1] * sin_p + dir_cam[2] * cos_p
-
-        dx_w = dx_p * cos_y - dz_p * sin_y
-        dy_w = dy_p
-        dz_w = dx_p * sin_y + dz_p * cos_y
-
-        ray_dir_world = np.array([dx_w, dy_w, dz_w], dtype=np.float64)
+        # Transformar origen y dirección a coordenadas del mundo vía VT (inversa exacta)
+        cam_pos, _, _, _, VT = self.get_camera_vectors()
+        ray_dir_world = VT @ dir_cam
         ray_dir_world /= np.linalg.norm(ray_dir_world)
 
         # Intersección Rayo - Esfera: ||cam_pos + t * ray_dir||^2 = R^2
         # a*t^2 + b*t + c = 0 donde a = 1
-        b = 2.0 * np.dot(cam_pos_world, ray_dir_world)
-        c = np.dot(cam_pos_world, cam_pos_world) - self.radius * self.radius
+        b = 2.0 * np.dot(cam_pos, ray_dir_world)
+        c = np.dot(cam_pos, cam_pos) - self.radius * self.radius
 
         discriminant = b * b - 4.0 * c
         if discriminant < 0.0:
@@ -322,7 +371,7 @@ class Canvas3DSphere(QOpenGLWidget):
         if t < 0.0:
             return None
 
-        hit_point = cam_pos_world + t * ray_dir_world
+        hit_point = cam_pos + t * ray_dir_world
         # Re-normalizar al radio exacto
         hit_point = hit_point / np.linalg.norm(hit_point) * self.radius
         return hit_point.tolist()
@@ -342,7 +391,7 @@ class Canvas3DSphere(QOpenGLWidget):
                 self.stroke_points_3d = [hit]
                 self.hover_point_3d = hit
                 self.update()
-                self.stroke_3d_updated.emit(self.stroke_points_3d)
+                self.stroke_3d_updated.emit(self.get_current_strokes_payload())
             else:
                 # Si hace clic fuera de la esfera, permite orbitar
                 self.is_orbiting = True
@@ -365,14 +414,15 @@ class Canvas3DSphere(QOpenGLWidget):
                 if self.stroke_points_3d:
                     p_last = np.array(self.stroke_points_3d[-1])
                     dist = np.linalg.norm(np.array(hit) - p_last)
-                    if dist >= 0.015:  # Paso espacial mínimo
+                    if dist >= 0.012:  # Paso espacial mínimo
                         self.stroke_points_3d.append(hit)
                         self.hover_point_3d = hit
                         self.update()
-                        self.stroke_3d_updated.emit(self.stroke_points_3d)
+                        self.stroke_3d_updated.emit(self.get_current_strokes_payload())
                 else:
                     self.stroke_points_3d.append(hit)
                     self.update()
+                    self.stroke_3d_updated.emit(self.get_current_strokes_payload())
 
         elif self.is_orbiting and self.last_mouse_pos:
             dx = pos.x() - self.last_mouse_pos.x()
@@ -390,6 +440,7 @@ class Canvas3DSphere(QOpenGLWidget):
                 self.all_completed_strokes_3d.append(list(self.stroke_points_3d))
             self.stroke_points_3d = []
             self.update()
+            self.stroke_3d_updated.emit(self.get_current_strokes_payload())
 
         if event.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton, Qt.MouseButton.MiddleButton):
             self.is_orbiting = False

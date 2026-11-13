@@ -12,6 +12,7 @@ Diseño optimizado:
 """
 
 import os
+import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -80,6 +81,9 @@ class Recognizer3DView(QWidget):
         self.canvas_3d.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         left_layout.addWidget(self.canvas_3d, stretch=1)
 
+        # Barra flotante de herramientas (reseteo de cámara y limpieza) en la esquina superior izquierda del lienzo 3D
+        self._create_canvas_overlay()
+
         # Barra de estado inferior compacta
         self.stats_bar = QFrame()
         self.stats_bar.setFixedHeight(28)
@@ -111,7 +115,16 @@ class Recognizer3DView(QWidget):
         main_layout.addWidget(splitter, stretch=1)
 
         # Conectar actualización del trazo 3D
+        self.selected_target_char = None
         self.canvas_3d.stroke_3d_updated.connect(self._on_stroke_3d_updated)
+        self.ranking_panel.letter_selected.connect(self._on_letter_selected)
+
+    def _on_letter_selected(self, char: str):
+        """Permite fijar manualmente la proyección 3D a una letra específica."""
+        self.selected_target_char = char
+        payload = self.canvas_3d.get_current_strokes_payload()
+        if payload:
+            self._on_stroke_3d_updated(payload)
 
     def _create_top_bar(self):
         """Crea la barra superior con botones de casita, flecha circular y borrador."""
@@ -165,42 +178,69 @@ class Recognizer3DView(QWidget):
         layout.addWidget(badge)
 
         layout.addStretch()
+        return bar
 
-        # 2. Botón Centrar Cámara con SVG center_focus (sin texto)
-        btn_reset_cam = QPushButton()
+    def _create_canvas_overlay(self):
+        """Crea la barra flotante con botones de control en la esquina superior izquierda de la esfera 3D."""
+        overlay = QFrame(self.canvas_3d)
+        overlay.setObjectName("canvasOverlayBar")
+        overlay.setStyleSheet("""
+            QFrame#canvasOverlayBar {
+                background-color: rgba(22, 27, 34, 0.88);
+                border: 1px solid #30363d;
+                border-radius: 9px;
+            }
+        """)
+
+        layout = QHBoxLayout(overlay)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
+
+        # 1. Botón Centrar Cámara con SVG center_focus (sin texto)
+        btn_reset_cam = QPushButton(overlay)
         btn_reset_cam.setProperty("class", "iconButton")
-        btn_reset_cam.setFixedSize(40, 40)
+        btn_reset_cam.setFixedSize(36, 36)
         btn_reset_cam.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_reset_cam.setToolTip("Centrar Cámara (Center Focus)")
+        btn_reset_cam.setToolTip("Centrar Cámara (Center Focus / Reset Vista)")
 
         center_icon_path = os.path.join(self.ui_dir, "center_focus.png")
         if not os.path.exists(center_icon_path):
             center_icon_path = os.path.join(self.ui_dir, "center_focus.svg")
         if os.path.exists(center_icon_path):
             btn_reset_cam.setIcon(QIcon(center_icon_path))
-            btn_reset_cam.setIconSize(QSize(22, 22))
+            btn_reset_cam.setIconSize(QSize(20, 20))
 
         btn_reset_cam.clicked.connect(self.reset_camera)
         layout.addWidget(btn_reset_cam)
 
-        # 3. Botón Limpiar Esfera con SVG de borrador/clear-format (sin texto)
-        btn_clear = QPushButton()
+        # 2. Botón Limpiar Esfera con SVG de borrador/clear-format (sin texto)
+        btn_clear = QPushButton(overlay)
         btn_clear.setProperty("class", "iconButtonDanger")
-        btn_clear.setFixedSize(40, 40)
+        btn_clear.setFixedSize(36, 36)
         btn_clear.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_clear.setToolTip("Limpiar Esfera (Clear Format)")
+        btn_clear.setToolTip("Limpiar Esfera Completa (Clear Format)")
 
         clear_icon_path = os.path.join(self.ui_dir, "clear.png")
         if not os.path.exists(clear_icon_path):
             clear_icon_path = os.path.join(self.ui_dir, "clear.svg")
         if os.path.exists(clear_icon_path):
             btn_clear.setIcon(QIcon(clear_icon_path))
-            btn_clear.setIconSize(QSize(22, 22))
+            btn_clear.setIconSize(QSize(20, 20))
 
         btn_clear.clicked.connect(self.clear_canvas)
         layout.addWidget(btn_clear)
 
-        return bar
+        # Evitar que hacer clic o arrastrar en el marco del overlay gire la esfera o dibuje
+        overlay.mousePressEvent = lambda e: e.accept()
+        overlay.mouseMoveEvent = lambda e: e.accept()
+        overlay.mouseReleaseEvent = lambda e: e.accept()
+
+        overlay.adjustSize()
+        overlay.move(14, 14)
+        overlay.show()
+        overlay.raise_()
+
+        self.canvas_3d.overlay_toolbar = overlay
 
     def reset_camera(self):
         """Centra la vista de cámara sobre la esfera."""
@@ -209,29 +249,59 @@ class Recognizer3DView(QWidget):
 
     def clear_canvas(self):
         """Limpia el trazo sobre la esfera y restablece el panel de clasificación."""
+        self.selected_target_char = None
         self.canvas_3d.clear_canvas()
         self.ranking_panel.reset_display()
         self.stats_label.setText("Puntos sobre la esfera: 0  |  Variaciones tangenciales (Δθ, Δϕ): 0")
 
-    def _on_stroke_3d_updated(self, points_3d):
+    def _on_stroke_3d_updated(self, payload):
         """
         Slot invocado en tiempo real cuando el trazo sobre la esfera evoluciona.
-        Convierte coordenadas esféricas (theta, phi), mide variaciones tangenciales,
-        cuantiza a K=16 sectores y actualiza la clasificación y autocompletado 3D.
+        Procesa los trazos 3D en el sistema de coordenadas de la vista de cámara,
+        evalúa Forward y actualiza la clasificación y autocompletado 3D con puntos.
         """
-        if not points_3d:
+        if not payload:
             self.ranking_panel.reset_display()
             self.canvas_3d.set_projection_3d([])
             self.stats_label.setText("Puntos sobre la esfera: 0  |  Variaciones tangenciales (Δθ, Δϕ): 0")
             return
 
-        # 1. Transformar a coordenadas esféricas y extraer símbolos angulares tangenciales
+        # Normalizar a lista de trazos [stroke1, stroke2, ...]
+        if isinstance(payload[0][0], (int, float)):
+            all_strokes_3d = [payload]
+        else:
+            all_strokes_3d = [st for st in payload if len(st) > 0]
+
+        if not all_strokes_3d:
+            self.ranking_panel.reset_display()
+            self.canvas_3d.set_projection_3d([])
+            return
+
+        # Obtener vectores del frame de cámara para garantizar invarianza a rotación de la esfera
+        cam_pos, cam_right, cam_down, cam_forward, VT = self.canvas_3d.get_camera_vectors()
+
+        # 1. Extraer símbolos angulares discretos tangenciales usando frame de cámara
+        all_pts_flat = []
+        for st in all_strokes_3d:
+            all_pts_flat.extend(st)
+
         symbols, res_pts_3d = FeatureExtractor.extract_symbols_from_sphere_points(
-            points_3d, radius=self.canvas_3d.radius, step=0.06
+            all_pts_flat, radius=self.canvas_3d.radius,
+            cam_right=cam_right, cam_down=cam_down
         )
 
+        # Si aún no hay símbolos remuestreados pero hay al menos 2 puntos 3D
+        if len(symbols) == 0 and len(all_pts_flat) >= 2:
+            p0 = np.asarray(all_pts_flat[0], dtype=np.float64)
+            p1 = np.asarray(all_pts_flat[-1], dtype=np.float64)
+            d = p1 - p0
+            dx = float(np.dot(d, cam_right))
+            dy = float(np.dot(d, cam_down))
+            if dx * dx + dy * dy >= 1e-6:
+                symbols = [FeatureExtractor.quantize_angle_2d(dx, dy)]
+
         self.stats_label.setText(
-            f"Puntos 3D: {len(points_3d)}  |  "
+            f"Puntos 3D: {len(all_pts_flat)}  |  "
             f"Geodésicas remuestreadas: {len(res_pts_3d)}  |  "
             f"Símbolos tangenciales (K=16): {len(symbols)}"
         )
@@ -245,21 +315,18 @@ class Recognizer3DView(QWidget):
         results = self.classifier.classify(symbols)
         self.ranking_panel.update_ranking(results)
 
-        # 3. Proyección dinámica 3D sobre la superficie esférica
-        top1 = results[0]
-        top_char = top1["char"]
-        top_perc = top1["percentage"]
+        # 3. Proyección dinámica 3D sobre la superficie esférica con puntos
+        top_char = self.selected_target_char if self.selected_target_char else results[0]["char"]
+        top_match = next((r for r in results if r["char"] == top_char), results[0])
+        top_perc = top_match["percentage"]
 
-        future_symbols = self.classifier.predict_trajectory_symbols(symbols, top_char=top_char, horizon=18)
+        projected_strokes_3d = FeatureExtractor.predict_complete_projection_3d(
+            all_strokes_3d=all_strokes_3d,
+            top_char=top_char,
+            radius=self.canvas_3d.radius,
+            classifier=self.classifier,
+            cam_right=cam_right,
+            cam_down=cam_down
+        )
 
-        if future_symbols and len(points_3d) > 0:
-            last_pt_3d = points_3d[-1]
-            proj_3d = FeatureExtractor.reconstruct_trajectory_3d_sphere(
-                start_pt_3d=last_pt_3d,
-                symbols=future_symbols,
-                radius=self.canvas_3d.radius,
-                step=0.06
-            )
-            self.canvas_3d.set_projection_3d(proj_3d, projected_char=top_char, prob_perc=top_perc)
-        else:
-            self.canvas_3d.set_projection_3d([], projected_char=top_char, prob_perc=top_perc)
+        self.canvas_3d.set_projection_3d(projected_strokes_3d, projected_char=top_char, prob_perc=top_perc)

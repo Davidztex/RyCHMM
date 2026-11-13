@@ -24,8 +24,11 @@ from training.generate_icons import generate_all_icons
 
 
 def find_dataset_file():
-    """Busca el archivo de dataset en rutas conocidas."""
+    """Busca el archivo de dataset en rutas conocidas (priorizando la versión 2026-11-12)."""
     candidates = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "dataset", "glifo-dataset-2026-11-12.json")),
+        r"c:\Users\David\Downloads\glifo-dataset-2026-11-12.json",
+        os.path.abspath("glifo-dataset-2026-11-12.json"),
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "dataset", "glifo-dataset-2026-11-05.json")),
         r"c:\Users\David\Downloads\glifo-dataset-2026-11-05.json",
         os.path.abspath("glifo-dataset-2026-11-05.json")
@@ -39,7 +42,8 @@ def find_dataset_file():
 def copy_dataset_if_needed(source_path, target_dir):
     """Copia el dataset a data/dataset para portabilidad total del proyecto."""
     os.makedirs(target_dir, exist_ok=True)
-    target_path = os.path.join(target_dir, "glifo-dataset-2026-11-05.json")
+    filename = os.path.basename(source_path)
+    target_path = os.path.join(target_dir, filename)
     if not os.path.exists(target_path) and os.path.exists(source_path):
         print(f"Copiando dataset a carpeta local del proyecto: {target_path}")
         shutil.copy2(source_path, target_path)
@@ -87,7 +91,7 @@ def train_all_models(dataset_path=None, output_dir=None, n_states=6, max_iter=12
         if not char_samples and char == 'ñ':
             # Intentar buscar por código o representación
             for k in raw_data.keys():
-                if ord(k[0]) == 241 or k == 'ñ' or k == '':
+                if len(k) > 0 and (ord(k[0]) == 241 or k in ('ñ', 'nn', 'char_241')):
                     char_samples = raw_data[k]
                     break
 
