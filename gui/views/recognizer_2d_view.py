@@ -51,11 +51,11 @@ class Recognizer2DView(QWidget):
         splitter.setHandleWidth(8)
         splitter.setStyleSheet("""
             QSplitter::handle {
-                background-color: #21262d;
+                background-color: #E0E8FF;
                 border-radius: 4px;
             }
             QSplitter::handle:hover {
-                background-color: #58a6ff;
+                background-color: #1565C0;
             }
         """)
 
@@ -64,8 +64,8 @@ class Recognizer2DView(QWidget):
         left_container.setObjectName("cardFrame")
         left_container.setStyleSheet("""
             QFrame#cardFrame {
-                background-color: #0b0e14;
-                border: 1px solid #30363d;
+                background-color: #F5F7FA;
+                border: 1px solid #C8D8F0;
                 border-radius: 12px;
                 padding: 0px;
             }
@@ -85,16 +85,16 @@ class Recognizer2DView(QWidget):
         # Barra de estado inferior compacta
         self.stats_bar = QFrame()
         self.stats_bar.setFixedHeight(28)
-        self.stats_bar.setStyleSheet("background-color: #0e1219; border-top: 1px solid #21262d; border-radius: 0 0 12px 12px;")
+        self.stats_bar.setStyleSheet("background-color: #F5F7FA; border-top: 1px solid #E0E8FF; border-radius: 0 0 12px 12px;")
         sb_layout = QHBoxLayout(self.stats_bar)
         sb_layout.setContentsMargins(14, 0, 14, 0)
 
         self.stats_label = QLabel("Trazos: 0  |  Puntos: 0  |  Símbolos discretos: 0")
-        self.stats_label.setStyleSheet("color: #8b949e; font-size: 11px; font-weight: 500;")
+        self.stats_label.setStyleSheet("color: #555555; font-size: 11px; font-weight: 500;")
         sb_layout.addWidget(self.stats_label)
 
         hint_quick = QLabel("Atajo: [C] o [Espacio] para limpiar")
-        hint_quick.setStyleSheet("color: #484f58; font-size: 11px;")
+        hint_quick.setStyleSheet("color: #777777; font-size: 11px;")
         hint_quick.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         sb_layout.addWidget(hint_quick)
 
@@ -121,7 +121,7 @@ class Recognizer2DView(QWidget):
         """Permite al usuario fijar manualmente la proyección a una letra específica."""
         self.selected_target_char = char
         # Re-proyectar si hay trazos
-        strokes = self.canvas.strokes
+        strokes = self.canvas.all_strokes + ([self.canvas.current_stroke] if self.canvas.current_stroke else [])
         if strokes:
             self._on_stroke_updated(strokes)
 
@@ -131,8 +131,8 @@ class Recognizer2DView(QWidget):
         bar.setFixedHeight(54)
         bar.setStyleSheet("""
             QFrame {
-                background-color: #161b22;
-                border: 1px solid #30363d;
+                background-color: #EEF2FF;
+                border: 1px solid #C8D8F0;
                 border-radius: 10px;
                 padding: 4px 12px;
             }
@@ -161,13 +161,13 @@ class Recognizer2DView(QWidget):
 
         # Título del modo
         title = QLabel("MODO 2D: RECONOCEDOR CARTESIANO")
-        title.setStyleSheet("color: #f0f6fc; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;")
+        title.setStyleSheet("color: #111111; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;")
         layout.addWidget(title)
 
         badge = QLabel("K=16 DIRECCIONES")
         badge.setStyleSheet("""
-            color: #00d2ff;
-            background-color: #0d1e2e;
+            color: #1565C0;
+            background-color: #D6E4FF;
             border: 1px solid #005f73;
             border-radius: 6px;
             padding: 2px 8px;
@@ -185,8 +185,8 @@ class Recognizer2DView(QWidget):
         overlay.setObjectName("canvasOverlayBar")
         overlay.setStyleSheet("""
             QFrame#canvasOverlayBar {
-                background-color: rgba(22, 27, 34, 0.88);
-                border: 1px solid #30363d;
+                background-color: rgba(255, 255, 254, 0.88);
+                border: 1px solid #C8D8F0;
                 border-radius: 9px;
             }
         """)
@@ -195,12 +195,27 @@ class Recognizer2DView(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
-        # 1. Botón Reiniciar Captura con SVG de retorno (sin texto)
+        # 1. Botón Reiniciar Captura con SVG de retorno (diseño idéntico a 3D)
         btn_reset = QPushButton(overlay)
         btn_reset.setProperty("class", "iconButton")
         btn_reset.setFixedSize(36, 36)
         btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_reset.setToolTip("Reiniciar Captura (Return)")
+        btn_reset.setStyleSheet("""
+            QPushButton {
+                background-color: #1565C0;
+                border: 1px solid #0D47A1;
+                border-radius: 9px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+                border-color: #42A5F5;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+        """)
 
         return_icon_path = os.path.join(self.ui_dir, "return.png")
         if not os.path.exists(return_icon_path):
@@ -212,12 +227,27 @@ class Recognizer2DView(QWidget):
         btn_reset.clicked.connect(self.reset_capture)
         layout.addWidget(btn_reset)
 
-        # 2. Botón Limpiar Lienzo con SVG de borrador/clear-format (sin texto)
+        # 2. Botón Limpiar Lienzo con SVG de borrador (diseño idéntico a 3D)
         btn_clear = QPushButton(overlay)
         btn_clear.setProperty("class", "iconButtonDanger")
         btn_clear.setFixedSize(36, 36)
         btn_clear.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_clear.setToolTip("Limpiar Lienzo (Clear Format)")
+        btn_clear.setStyleSheet("""
+            QPushButton {
+                background-color: #C62828;
+                border: 1px solid #B71C1C;
+                border-radius: 9px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #D32F2F;
+                border-color: #EF9A9A;
+            }
+            QPushButton:pressed {
+                background-color: #B71C1C;
+            }
+        """)
 
         clear_icon_path = os.path.join(self.ui_dir, "clear.png")
         if not os.path.exists(clear_icon_path):

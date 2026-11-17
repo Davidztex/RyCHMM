@@ -32,10 +32,10 @@ class Canvas3DSphere(QOpenGLWidget):
         # Parámetros geométricos de la esfera
         self.radius = 1.0
 
-        # Parámetros de la cámara orbital (Esfera aumentada para ocupar casi todo el lienzo)
+        # Parámetros de la cámara orbital
         self.yaw = 0.0          # Rotación horizontal en grados
         self.pitch = 15.0       # Rotación vertical en grados (-85° a 85°)
-        self.cam_distance = 2.22 # Distancia optimizada para que la esfera sea más grande y accesible
+        self.cam_distance = 3.5  # Distancia suficiente para ver la esfera completa con margen
 
         # Estado del ratón
         self.last_mouse_pos = None
@@ -114,7 +114,7 @@ class Canvas3DSphere(QOpenGLWidget):
         """Restablece la orientación de la cámara al punto de vista canónico frontal."""
         self.yaw = 0.0
         self.pitch = 15.0
-        self.cam_distance = 2.22
+        self.cam_distance = 3.5
         self.update()
 
     def set_projection_3d(self, trajectory_data, projected_char="", prob_perc=""):
@@ -135,7 +135,8 @@ class Canvas3DSphere(QOpenGLWidget):
     # -------------------------------------------------------------
 
     def initializeGL(self):
-        GL.glClearColor(0.043, 0.067, 0.082, 1.0)  # Fondo grafito oscuro
+        # Fondo color pastel #9FC2CC (rgb: 159, 194, 204)
+        GL.glClearColor(159.0 / 255.0, 194.0 / 255.0, 204.0 / 255.0, 1.0)
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glDepthFunc(GL.GL_LEQUAL)
 
@@ -170,6 +171,7 @@ class Canvas3DSphere(QOpenGLWidget):
             self.overlay_toolbar.raise_()
 
     def paintGL(self):
+        GL.glClearColor(159.0 / 255.0, 194.0 / 255.0, 204.0 / 255.0, 1.0)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
         GL.glMatrixMode(GL.GL_MODELVIEW)
         GL.glLoadIdentity()
@@ -182,12 +184,12 @@ class Canvas3DSphere(QOpenGLWidget):
         # 1. Dibujar esfera base y malla de meridianos/paralelos
         self._render_sphere_mesh()
 
-        # 2. Dibujar trazos completados anteriores
-        self._render_strokes_3d(self.all_completed_strokes_3d, color=(0.8, 0.85, 0.9, 0.9), line_width=3.0)
+        # 2. Dibujar trazos completados anteriores (azul marino profundo sobre fondo #9FC2CC)
+        self._render_strokes_3d(self.all_completed_strokes_3d, color=(0.08, 0.20, 0.45, 0.95), line_width=3.5)
 
-        # 3. Dibujar trazo activo actual
+        # 3. Dibujar trazo activo actual (azul real nítido)
         if self.stroke_points_3d:
-            self._render_single_stroke_3d(self.stroke_points_3d, color=(0.0, 0.85, 1.0, 1.0), line_width=4.0)
+            self._render_single_stroke_3d(self.stroke_points_3d, color=(0.02, 0.12, 0.65, 1.0), line_width=4.5)
 
         # 4. Dibujar trayectoria dinámica proyectada (autocompletado 3D punteado)
         self._render_projected_trajectory_3d()
@@ -204,8 +206,8 @@ class Canvas3DSphere(QOpenGLWidget):
         """Renderiza los meridianos y paralelos de la esfera alámbrica traslúcida."""
         R = self.radius
 
-        # Cascarón esférico sutilmente oscurecido para dar solidez
-        GL.glColor4f(0.08, 0.11, 0.16, 0.5)
+        # Cascarón esférico sutilmente traslúcido y claro para contrastar con el fondo #9FC2CC
+        GL.glColor4f(1.0, 1.0, 1.0, 0.35)
         quadric = GLU.gluNewQuadric()
         GLU.gluQuadricDrawStyle(quadric, GLU.GLU_FILL)
         GLU.gluSphere(quadric, R * 0.995, 32, 24)
@@ -219,10 +221,10 @@ class Canvas3DSphere(QOpenGLWidget):
             z_slice = R * math.sin(lat_rad)
 
             if lat_deg == 0:
-                GL.glColor4f(0.25, 0.45, 0.65, 0.6)  # Ecuador resaltado
-                GL.glLineWidth(1.5)
+                GL.glColor4f(0.12, 0.28, 0.42, 0.70)  # Ecuador resaltado
+                GL.glLineWidth(1.6)
             else:
-                GL.glColor4f(0.15, 0.22, 0.32, 0.35)
+                GL.glColor4f(0.25, 0.40, 0.52, 0.45)
                 GL.glLineWidth(1.0)
 
             GL.glBegin(GL.GL_LINE_LOOP)
@@ -231,14 +233,14 @@ class Canvas3DSphere(QOpenGLWidget):
                 GL.glVertex3f(r_slice * math.cos(ang), z_slice, r_slice * math.sin(ang))
             GL.glEnd()
 
-        # Meridianos (círculos de longitud cada 30 grados)
+            # Meridianos (círculos de longitud cada 30 grados)
         for lon_deg in range(0, 180, 30):
             lon_rad = math.radians(lon_deg)
             if lon_deg == 0:
-                GL.glColor4f(0.25, 0.45, 0.65, 0.6)
-                GL.glLineWidth(1.5)
+                GL.glColor4f(0.12, 0.28, 0.42, 0.70)
+                GL.glLineWidth(1.6)
             else:
-                GL.glColor4f(0.15, 0.22, 0.32, 0.35)
+                GL.glColor4f(0.25, 0.40, 0.52, 0.45)
                 GL.glLineWidth(1.0)
 
             GL.glBegin(GL.GL_LINE_LOOP)
@@ -315,10 +317,10 @@ class Canvas3DSphere(QOpenGLWidget):
             GL.glEnd()
 
     def _render_hover_point(self):
-        """Renderiza un anillo brillante en el punto de contacto del cursor sobre la esfera."""
+        """Renderiza un anillo visible en el punto de contacto del cursor sobre la esfera."""
         p = self.hover_point_3d
         GL.glPointSize(8.0)
-        GL.glColor4f(0.0, 0.85, 1.0, 0.7)
+        GL.glColor4f(0.05, 0.22, 0.55, 0.85)
         GL.glBegin(GL.GL_POINTS)
         GL.glVertex3f(p[0] * 1.008, p[1] * 1.008, p[2] * 1.008)
         GL.glEnd()
@@ -449,7 +451,7 @@ class Canvas3DSphere(QOpenGLWidget):
         # Control suave de zoom
         delta = event.angleDelta().y()
         if delta > 0:
-            self.cam_distance = max(1.4, self.cam_distance - 0.15)
+            self.cam_distance = max(2.0, self.cam_distance - 0.15)
         elif delta < 0:
             self.cam_distance = min(5.0, self.cam_distance + 0.15)
         self.update()

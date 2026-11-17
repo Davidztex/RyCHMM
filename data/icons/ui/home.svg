@@ -1,4 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
   <title>home</title>
-  <path fill="#f0f6fc" d="M10 20v-6h4v6h5v-8h3L12 3L2 12h3v8z"/>
+  <!-- Contorno negro exterior -->
+  <path fill="#000000" stroke="#000000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" d="M10 20v-6h4v6h5v-8h3L12 3L2 12h3v8z"/>
+  <!-- Relleno interior blanco -->
+  <path fill="#FFFFFE" d="M10 20v-6h4v6h5v-8h3L12 3L2 12h3v8z"/>
 </svg>

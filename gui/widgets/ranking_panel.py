@@ -1,14 +1,15 @@
 """
 ranking_panel.py
 ================
-Panel derecho interactivo de clasificación probabilística en tiempo real.
-Muestra el listado ordenado descendentemente según P(Carácter | O_{1:t}),
-con tarjeta destacada Top-1, barras de progreso y miniaturas de referencia de las 27 letras.
+Panel derecho de clasificación probabilística en tiempo real.
+Muestra el candidato más probable (#1) en una tarjeta destacada grande ("Hero Card"),
+y a continuación el listado ordenado descendentemente iniciando desde el #2, #3... #27,
+eliminando toda redundancia y como filas informativas no cliqueables.
 """
 
 import os
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
-from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
+from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
     QScrollArea, QFrame, QSizePolicy
@@ -17,45 +18,157 @@ from PyQt6.QtWidgets import (
 from engine.hmm_engine import SPANISH_ALPHABET
 
 
-class LetterRowWidget(QFrame):
-    """Fila visual individual para una letra en la lista de clasificación."""
+class Top1HeroCard(QFrame):
+    """
+    Tarjeta destacada grande para la letra más probable (#1).
+    Proporciona máxima visibilidad con glifo grande, icono, porcentaje y barra de progreso.
+    """
 
-    clicked = pyqtSignal(str)
+    def __init__(self, icons_dir, parent=None):
+        super().__init__(parent)
+        self.icons_dir = icons_dir
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+        self.setObjectName("heroCard")
+        self.setFixedHeight(100)
+        self.setStyleSheet("""
+            QFrame#heroCard {
+                background-color: #EEF2FF;
+                border: 2px solid #1565C0;
+                border-radius: 12px;
+            }
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(12)
+
+        # 1. Icono / miniatura grande
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(60, 60)
+        self.icon_label.setScaledContents(True)
+        self.icon_label.setStyleSheet("border-radius: 10px; background-color: #E0E8FF;")
+        layout.addWidget(self.icon_label)
+
+        # 2. Información central (#1, Letra, Detalles)
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+        info_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        self.badge_label = QLabel("#1 MÁS PROBABLE")
+        self.badge_label.setStyleSheet("color: #1565C0; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;")
+        info_layout.addWidget(self.badge_label)
+
+        self.char_label = QLabel("Esperando trazo...")
+        self.char_label.setStyleSheet("color: #0D47A1; font-size: 21px; font-weight: 900;")
+        info_layout.addWidget(self.char_label)
+
+        self.details_label = QLabel("Dibuje en el lienzo para clasificar")
+        self.details_label.setStyleSheet("color: #555555; font-size: 11px;")
+        info_layout.addWidget(self.details_label)
+
+        layout.addLayout(info_layout)
+        layout.addStretch()
+
+        # 3. Columna derecha: Porcentaje grande y barra de progreso
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(4)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        self.prob_label = QLabel("0.0%")
+        self.prob_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.prob_label.setStyleSheet("color: #1565C0; font-size: 24px; font-weight: 900;")
+        right_layout.addWidget(self.prob_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedSize(90, 8)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #D6E4FF;
+                border: 1px solid #BBCDE5;
+                border-radius: 4px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0D47A1, stop:1 #1565C0);
+                border-radius: 3px;
+            }
+        """)
+        right_layout.addWidget(self.progress_bar)
+
+        layout.addLayout(right_layout)
+
+    def set_data(self, char, prob, percentage, log_lik):
+        """Actualiza los datos visuales de la letra ganadora."""
+        self.badge_label.setText("#1 MÁS PROBABLE")
+        self.char_label.setText(f"Letra '{char}'")
+        self.prob_label.setText(percentage)
+        self.details_label.setText(f"Prob: {prob:.4f}  |  ln P: {log_lik:.1f}")
+        self.progress_bar.setValue(int(prob * 1000))
+
+        # Cargar icono
+        safe_name = f"char_{ord(char)}.png" if ord(char) > 127 else f"{char}.png"
+        icon_path = os.path.join(self.icons_dir, safe_name)
+        if not os.path.exists(icon_path) and char == 'ñ':
+            icon_path = os.path.join(self.icons_dir, "nn.png")
+        if os.path.exists(icon_path):
+            self.icon_label.setPixmap(QPixmap(icon_path))
+        else:
+            self.icon_label.setText(char)
+            self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.icon_label.setStyleSheet("background-color: #E0E8FF; border-radius: 10px; color: #1565C0; font-size: 24px; font-weight: bold;")
+
+    def reset_display(self):
+        """Restablece al estado inicial."""
+        self.badge_label.setText("#1 MÁS PROBABLE")
+        self.char_label.setText("Esperando trazo...")
+        self.prob_label.setText("0.0%")
+        self.details_label.setText("Dibuje en el lienzo para clasificar")
+        self.icon_label.clear()
+        self.progress_bar.setValue(0)
+
+    def mousePressEvent(self, event):
+        event.accept()
+
+
+class LetterRowWidget(QFrame):
+    """
+    Fila visual informativa para una letra (puestos #2 al #27).
+    No es un botón interactivo para evitar clics accidentales.
+    """
 
     def __init__(self, char, icons_dir, parent=None):
         super().__init__(parent)
         self.char = char
         self.icons_dir = icons_dir
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
-        self.setFixedHeight(48)
+        self.setFixedHeight(46)
         self.setStyleSheet("""
             LetterRowWidget {
-                background-color: #161b22;
-                border: 1px solid #21262d;
+                background-color: #F8FAFD;
+                border: 1px solid #E2E8F0;
                 border-radius: 8px;
                 padding: 2px 8px;
-            }
-            LetterRowWidget:hover {
-                background-color: #21262d;
-                border-color: #388bfd;
             }
         """)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(10, 3, 10, 3)
         layout.setSpacing(10)
 
-        # 1. Badge con el número de ranking
+        # 1. Badge con el número de ranking (#2, #3, ...)
         self.rank_label = QLabel("#--")
-        self.rank_label.setFixedWidth(28)
+        self.rank_label.setFixedWidth(32)
         self.rank_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.rank_label.setStyleSheet("color: #8b949e; font-weight: 700; font-size: 11px;")
+        self.rank_label.setStyleSheet("color: #64748B; font-weight: 700; font-size: 11px;")
         layout.addWidget(self.rank_label)
 
-        # 2. Icono/miniatura estática de referencia
+        # 2. Icono/miniatura estática
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(32, 32)
+        self.icon_label.setFixedSize(30, 30)
         self.icon_label.setScaledContents(True)
         self._load_icon()
         layout.addWidget(self.icon_label)
@@ -66,10 +179,10 @@ class LetterRowWidget(QFrame):
         self.char_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont("Segoe UI", 15, QFont.Weight.Bold)
         self.char_label.setFont(font)
-        self.char_label.setStyleSheet("color: #f0f6fc;")
+        self.char_label.setStyleSheet("color: #111111;")
         layout.addWidget(self.char_label)
 
-        # 4. Barra de progreso visual estilizada
+        # 4. Barra de progreso visual
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
@@ -78,11 +191,11 @@ class LetterRowWidget(QFrame):
         self.progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.progress_bar)
 
-        # 5. Valor numérico de probabilidad y porcentaje
+        # 5. Porcentaje
         self.value_label = QLabel("0.0%")
-        self.value_label.setFixedWidth(56)
+        self.value_label.setFixedWidth(60)
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.value_label.setStyleSheet("color: #58a6ff; font-weight: 600; font-size: 12px;")
+        self.value_label.setStyleSheet("color: #555555; font-weight: 600; font-size: 12px;")
         layout.addWidget(self.value_label)
 
     def _load_icon(self):
@@ -98,7 +211,7 @@ class LetterRowWidget(QFrame):
         else:
             self.icon_label.setText(self.char)
             self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.icon_label.setStyleSheet("background-color: #21262d; border-radius: 6px; color: #58a6ff; font-weight: bold;")
+            self.icon_label.setStyleSheet("background-color: #E0E8FF; border-radius: 6px; color: #1565C0; font-weight: bold;")
 
     def update_data(self, rank, prob, percentage, log_lik):
         """Actualiza los valores visuales de la fila."""
@@ -107,31 +220,39 @@ class LetterRowWidget(QFrame):
         self.progress_bar.setValue(max(0, min(1000, val)))
         self.value_label.setText(percentage)
 
-        # Resaltado especial si está en el top 3
-        if rank == 1:
-            self.rank_label.setStyleSheet("color: #00d2ff; font-weight: 800; font-size: 12px;")
-            self.value_label.setStyleSheet("color: #00d2ff; font-weight: 700; font-size: 13px;")
-            self.progress_bar.setStyleSheet("""
-                QProgressBar::chunk {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0077b6, stop:1 #00d2ff);
-                    border-radius: 4px;
+        if rank <= 3:
+            self.setStyleSheet("""
+                LetterRowWidget {
+                    background-color: #F0F4FC;
+                    border: 1px solid #90B4E2;
+                    border-radius: 8px;
+                    padding: 2px 8px;
                 }
             """)
-        elif rank <= 3:
-            self.rank_label.setStyleSheet("color: #58a6ff; font-weight: 700; font-size: 11px;")
-            self.value_label.setStyleSheet("color: #58a6ff; font-weight: 600; font-size: 12px;")
+            self.rank_label.setStyleSheet("color: #1565C0; font-weight: 700; font-size: 11px;")
+            self.char_label.setStyleSheet("color: #111111; font-weight: 700; font-size: 15px;")
+            self.value_label.setStyleSheet("color: #1565C0; font-weight: 700; font-size: 12px;")
             self.progress_bar.setStyleSheet("""
                 QProgressBar::chunk {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f6feb, stop:1 #58a6ff);
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1976D2, stop:1 #42A5F5);
                     border-radius: 4px;
                 }
             """)
         else:
-            self.rank_label.setStyleSheet("color: #8b949e; font-weight: 600; font-size: 11px;")
-            self.value_label.setStyleSheet("color: #8b949e; font-weight: 500; font-size: 12px;")
+            self.setStyleSheet("""
+                LetterRowWidget {
+                    background-color: #F8FAFD;
+                    border: 1px solid #E2E8F0;
+                    border-radius: 8px;
+                    padding: 2px 8px;
+                }
+            """)
+            self.rank_label.setStyleSheet("color: #64748B; font-weight: 600; font-size: 11px;")
+            self.char_label.setStyleSheet("color: #334155; font-weight: 600; font-size: 14px;")
+            self.value_label.setStyleSheet("color: #64748B; font-weight: 500; font-size: 11px;")
             self.progress_bar.setStyleSheet("""
                 QProgressBar::chunk {
-                    background-color: #30363d;
+                    background-color: #CBD5E1;
                     border-radius: 4px;
                 }
             """)
@@ -139,14 +260,14 @@ class LetterRowWidget(QFrame):
         self.setToolTip(f"Carácter: '{self.char}'\nProbabilidad P: {prob:.4f} ({percentage})\nLog-Verosimilitud ln P: {log_lik:.2f}")
 
     def mousePressEvent(self, event):
-        super().mousePressEvent(event)
-        self.clicked.emit(self.char)
+        event.accept()
 
 
 class RankingPanel(QWidget):
     """
     Panel vertical de clasificación en tiempo real según P(Carácter | O_{1:t}).
-    Incluye Hero Card para el candidato Top-1 y lista scrollable de las 27 letras.
+    - Recuadro superior grande (Hero Card) para la letra más probable (#1).
+    - Lista scrollable directamente debajo, iniciando desde la segunda (#2) hasta la #27.
     """
 
     letter_selected = pyqtSignal(str)
@@ -163,146 +284,106 @@ class RankingPanel(QWidget):
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(12)
+        main_layout.setSpacing(10)
 
         # 1. Cabecera del Panel
         header_widget = QWidget()
         h_layout = QVBoxLayout(header_widget)
         h_layout.setContentsMargins(0, 0, 0, 0)
-        h_layout.setSpacing(2)
+        h_layout.setSpacing(3)
 
         title = QLabel("CLASIFICACIÓN Y PROBABILIDADES")
-        title.setStyleSheet("color: #58a6ff; font-size: 12px; font-weight: 800; letter-spacing: 0.8px;")
+        title.setStyleSheet("color: #1565C0; font-size: 13px; font-weight: 800; letter-spacing: 0.8px;")
         h_layout.addWidget(title)
 
         subtitle = QLabel("Evaluación Forward en Tiempo Real: P(C | O1:t)")
-        subtitle.setStyleSheet("color: #8b949e; font-size: 11px;")
+        subtitle.setStyleSheet("color: #555555; font-size: 11px;")
         h_layout.addWidget(subtitle)
 
         main_layout.addWidget(header_widget)
 
-        # 2. Tarjeta Destacada Top-1 (Hero Card)
-        self.hero_card = QFrame()
-        self.hero_card.setObjectName("heroCard")
-        self.hero_card.setFixedHeight(105)
-        self.hero_card.setStyleSheet("""
-            QFrame#heroCard {
-                background-color: #161b22;
-                border: 2px solid #00d2ff;
-                border-radius: 12px;
-            }
-        """)
-        hero_layout = QHBoxLayout(self.hero_card)
-        hero_layout.setContentsMargins(14, 10, 14, 10)
-        hero_layout.setSpacing(12)
-
-        # Icono Top-1
-        self.hero_icon = QLabel()
-        self.hero_icon.setFixedSize(64, 64)
-        self.hero_icon.setScaledContents(True)
-        self.hero_icon.setStyleSheet("border-radius: 10px; background-color: #21262d;")
-        hero_layout.addWidget(self.hero_icon)
-
-        # Información central Top-1
-        hero_info = QVBoxLayout()
-        hero_info.setSpacing(2)
-        hero_info.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        badge_top1 = QLabel("TOP-1 CANDIDATO ESTIMADO")
-        badge_top1.setStyleSheet("color: #00d2ff; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;")
-        hero_info.addWidget(badge_top1)
-
-        self.hero_char_label = QLabel("Esperando trazo...")
-        self.hero_char_label.setStyleSheet("color: #f0f6fc; font-size: 20px; font-weight: 800;")
-        hero_info.addWidget(self.hero_char_label)
-
-        self.hero_details_label = QLabel("Dibuje en el lienzo para clasificar")
-        self.hero_details_label.setStyleSheet("color: #8b949e; font-size: 11px;")
-        hero_info.addWidget(self.hero_details_label)
-
-        hero_layout.addLayout(hero_info)
-        hero_layout.addStretch()
-
-        # Porcentaje grande
-        self.hero_prob_label = QLabel("0.0%")
-        self.hero_prob_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.hero_prob_label.setStyleSheet("color: #00d2ff; font-size: 24px; font-weight: 900;")
-        hero_layout.addWidget(self.hero_prob_label)
-
+        # 2. Recuadro destacado grande para la letra más probable (#1)
+        self.hero_card = Top1HeroCard(self.icons_dir, self)
         main_layout.addWidget(self.hero_card)
 
-        # 3. ScrollArea con el listado ordenado descendente
+        # 3. ScrollArea con el listado de las demás letras (inicia en #2)
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: 1px solid #E2E8F0;
+                border-radius: 10px;
+            }
+        """)
 
         self.scroll_widget = QWidget()
+        self.scroll_widget.setStyleSheet("background-color: #FFFFFE;")
         self.rows_layout = QVBoxLayout(self.scroll_widget)
-        self.rows_layout.setContentsMargins(2, 2, 6, 2)
+        self.rows_layout.setContentsMargins(6, 6, 6, 6)
         self.rows_layout.setSpacing(6)
 
         # Crear filas para las 27 letras del alfabeto español
         self.row_widgets = {}
         for char in SPANISH_ALPHABET:
             row = LetterRowWidget(char, self.icons_dir, self)
-            row.clicked.connect(self.letter_selected.emit)
             self.row_widgets[char] = row
             self.rows_layout.addWidget(row)
 
         self.rows_layout.addStretch()
         self.scroll_area.setWidget(self.scroll_widget)
-        main_layout.addWidget(self.scroll_area)
+        main_layout.addWidget(self.scroll_area, stretch=1)
 
     def reset_display(self):
         """Reinicia el panel al estado inicial con distribución uniforme."""
-        self.hero_char_label.setText("Esperando trazo...")
-        self.hero_prob_label.setText("0.0%")
-        self.hero_details_label.setText("Dibuje en el lienzo para clasificar")
-        self.hero_icon.clear()
-
+        self.hero_card.reset_display()
         unif = 1.0 / len(self.row_widgets)
+        # Mostrar filas desde #2 en adelante (la primera se queda en el hero)
         for idx, (ch, row) in enumerate(self.row_widgets.items(), start=1):
-            row.update_data(rank=idx, prob=unif, percentage=f"{unif*100:.1f}%", log_lik=0.0)
+            if idx == 1:
+                row.setVisible(False)
+            else:
+                row.setVisible(True)
+                row.update_data(rank=idx, prob=unif, percentage=f"{unif*100:.1f}%", log_lik=0.0)
 
     def update_ranking(self, classification_results):
         """
-        Recibe la lista de 27 resultados ordenados y actualiza la GUI sin parpadeos.
+        Recibe la lista de 27 resultados ordenados:
+        - El puesto #1 (la más probable) se coloca en la tarjeta destacada grande.
+        - Los puestos del #2 al #27 se listan en el scrollarea en orden descendente.
+        Sin duplicar el puesto #1 en la lista inferior.
         """
         if not classification_results:
             self.reset_display()
             return
 
-        # 1. Actualizar Hero Card con Top-1
+        # 1. Candidato #1: actualiza la tarjeta destacada grande
         top1 = classification_results[0]
-        top_char = top1["char"]
-        top_prob = top1["probability"]
-        top_perc = top1["percentage"]
-        top_ll = top1["log_likelihood"]
+        self.hero_card.set_data(
+            char=top1["char"],
+            prob=top1["probability"],
+            percentage=top1["percentage"],
+            log_lik=top1["log_likelihood"]
+        )
 
-        self.hero_char_label.setText(f"Letra '{top_char}'")
-        self.hero_prob_label.setText(top_perc)
-        self.hero_details_label.setText(f"Prob: {top_prob:.4f}  |  ln P: {top_ll:.1f}")
+        # Ocultar la fila correspondiente al #1 dentro de la lista scrollable para no duplicarla
+        top1_row = self.row_widgets.get(top1["char"])
+        if top1_row:
+            top1_row.setVisible(False)
 
-        # Cargar icono de la letra Top-1
-        safe_name = f"char_{ord(top_char)}.png" if ord(top_char) > 127 else f"{top_char}.png"
-        icon_path = os.path.join(self.icons_dir, safe_name)
-        if not os.path.exists(icon_path) and top_char == 'ñ':
-            icon_path = os.path.join(self.icons_dir, "nn.png")
-        if os.path.exists(icon_path):
-            self.hero_icon.setPixmap(QPixmap(icon_path))
-
-        # 2. Reorganizar las filas en orden descendente y actualizar datos
-        # Desconectar temporalmente para reordenamiento rápido
-        for res in classification_results:
+        # 2. Candidatos restantes (#2 al #27): mostrar y reordenar en la lista
+        remaining = classification_results[1:]
+        for idx, res in enumerate(remaining):
             ch = res["char"]
             row = self.row_widgets.get(ch)
             if row:
+                row.setVisible(True)
                 row.update_data(
                     rank=res["rank"],
                     prob=res["probability"],
                     percentage=res["percentage"],
                     log_lik=res["log_likelihood"]
                 )
-                # Mover el widget a su nueva posición en el layout vertical
                 self.rows_layout.removeWidget(row)
-                self.rows_layout.insertWidget(res["rank"] - 1, row)
+                self.rows_layout.insertWidget(idx, row)

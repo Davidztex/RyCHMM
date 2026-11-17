@@ -53,11 +53,11 @@ class Recognizer3DView(QWidget):
         splitter.setHandleWidth(8)
         splitter.setStyleSheet("""
             QSplitter::handle {
-                background-color: #21262d;
+                background-color: #E0E8FF;
                 border-radius: 4px;
             }
             QSplitter::handle:hover {
-                background-color: #58a6ff;
+                background-color: #1565C0;
             }
         """)
 
@@ -66,8 +66,8 @@ class Recognizer3DView(QWidget):
         left_container.setObjectName("cardFrame")
         left_container.setStyleSheet("""
             QFrame#cardFrame {
-                background-color: #0b0e14;
-                border: 1px solid #30363d;
+                background-color: #9FC2CC;
+                border: 1px solid #7FA4AF;
                 border-radius: 12px;
                 padding: 0px;
             }
@@ -87,16 +87,16 @@ class Recognizer3DView(QWidget):
         # Barra de estado inferior compacta
         self.stats_bar = QFrame()
         self.stats_bar.setFixedHeight(28)
-        self.stats_bar.setStyleSheet("background-color: #0e1219; border-top: 1px solid #21262d; border-radius: 0 0 12px 12px;")
+        self.stats_bar.setStyleSheet("background-color: #8EB2BC; border-top: 1px solid #7FA4AF; border-radius: 0 0 12px 12px;")
         sb_layout = QHBoxLayout(self.stats_bar)
         sb_layout.setContentsMargins(14, 0, 14, 0)
 
         self.stats_label = QLabel("Puntos sobre la esfera: 0  |  Variaciones tangenciales (Δθ, Δϕ): 0")
-        self.stats_label.setStyleSheet("color: #8b949e; font-size: 11px; font-weight: 500;")
+        self.stats_label.setStyleSheet("color: #1A3644; font-size: 11px; font-weight: 600;")
         sb_layout.addWidget(self.stats_label)
 
         hint_quick = QLabel("Arrastrar: rotar 360° | Rueda: zoom")
-        hint_quick.setStyleSheet("color: #484f58; font-size: 11px;")
+        hint_quick.setStyleSheet("color: #2C4D5E; font-size: 11px;")
         hint_quick.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         sb_layout.addWidget(hint_quick)
 
@@ -132,8 +132,8 @@ class Recognizer3DView(QWidget):
         bar.setFixedHeight(54)
         bar.setStyleSheet("""
             QFrame {
-                background-color: #161b22;
-                border: 1px solid #30363d;
+                background-color: #EEF2FF;
+                border: 1px solid #C8D8F0;
                 border-radius: 10px;
                 padding: 4px 12px;
             }
@@ -162,13 +162,13 @@ class Recognizer3DView(QWidget):
 
         # Título del modo
         title = QLabel("MODO 3D: LIENZO ESFÉRICO (OPENGL)")
-        title.setStyleSheet("color: #f0f6fc; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;")
+        title.setStyleSheet("color: #111111; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;")
         layout.addWidget(title)
 
         badge = QLabel("GEOMETRÍA ESFÉRICA")
         badge.setStyleSheet("""
-            color: #00d2ff;
-            background-color: #0d1e2e;
+            color: #1565C0;
+            background-color: #D6E4FF;
             border: 1px solid #005f73;
             border-radius: 6px;
             padding: 2px 8px;
@@ -186,8 +186,8 @@ class Recognizer3DView(QWidget):
         overlay.setObjectName("canvasOverlayBar")
         overlay.setStyleSheet("""
             QFrame#canvasOverlayBar {
-                background-color: rgba(22, 27, 34, 0.88);
-                border: 1px solid #30363d;
+                background-color: rgba(255, 255, 254, 0.88);
+                border: 1px solid #C8D8F0;
                 border-radius: 9px;
             }
         """)

@@ -28,7 +28,7 @@ class AspectRatioImage(QLabel):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFixedHeight(185)
-        self.setStyleSheet("border-radius: 10px; border: 1px solid #21262d; background-color: #0d1117;")
+        self.setStyleSheet("border-radius: 10px; border: 1px solid #E0E8FF; background-color: #FFFFFE;")
         self._orig_pixmap = None
 
         if image_path and os.path.exists(image_path):
@@ -64,14 +64,14 @@ class ClickableModeCard(QFrame):
 
         self.setStyleSheet("""
             ClickableModeCard {
-                background-color: #161b22;
-                border: 2px solid #30363d;
+                background-color: #EEF2FF;
+                border: 2px solid #C8D8F0;
                 border-radius: 16px;
                 padding: 16px;
             }
             ClickableModeCard:hover {
-                border: 2px solid #00d2ff;
-                background-color: #1c2330;
+                border: 2px solid #1565C0;
+                background-color: #E8EFFF;
             }
         """)
 
@@ -83,8 +83,8 @@ class ClickableModeCard(QFrame):
         top_row = QHBoxLayout()
         badge_lbl = QLabel(badge_text)
         badge_lbl.setStyleSheet("""
-            color: #00d2ff;
-            background-color: #0d1e2e;
+            color: #1565C0;
+            background-color: #D6E4FF;
             border: 1px solid #005f73;
             border-radius: 6px;
             padding: 3px 10px;
@@ -96,7 +96,7 @@ class ClickableModeCard(QFrame):
         top_row.addStretch()
 
         num_lbl = QLabel(f"[{mode_number}]")
-        num_lbl.setStyleSheet("color: #8b949e; font-size: 15px; font-weight: 700;")
+        num_lbl.setStyleSheet("color: #555555; font-size: 15px; font-weight: 700;")
         top_row.addWidget(num_lbl)
         layout.addLayout(top_row)
 
@@ -106,12 +106,12 @@ class ClickableModeCard(QFrame):
 
         # 3. Título del modo
         title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("color: #f0f6fc; font-size: 18px; font-weight: 800; margin-top: 4px;")
+        title_lbl.setStyleSheet("color: #111111; font-size: 18px; font-weight: 800; margin-top: 4px;")
         layout.addWidget(title_lbl)
 
         # 4. Descripción breve de capacidades
         desc_lbl = QLabel(description)
-        desc_lbl.setStyleSheet("color: #8b949e; font-size: 12px; line-height: 1.4;")
+        desc_lbl.setStyleSheet("color: #555555; font-size: 12px; line-height: 1.4;")
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
@@ -120,7 +120,7 @@ class ClickableModeCard(QFrame):
         # 5. Indicador interactivo de clic
         click_hint = QLabel("▶ Haga clic para ingresar al modo")
         click_hint.setStyleSheet("""
-            color: #00d2ff;
+            color: #1565C0;
             font-size: 12px;
             font-weight: 700;
             padding-top: 6px;
@@ -166,17 +166,17 @@ class MenuView(QWidget):
         h_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         lbl_univ = QLabel("UNIVERSIDAD DE LOS LLANOS")
-        lbl_univ.setStyleSheet("color: #f0f6fc; font-size: 21px; font-weight: 900; letter-spacing: 1.5px;")
+        lbl_univ.setStyleSheet("color: #111111; font-size: 21px; font-weight: 900; letter-spacing: 1.5px;")
         lbl_univ.setAlignment(Qt.AlignmentFlag.AlignCenter)
         h_layout.addWidget(lbl_univ)
 
         lbl_fac = QLabel("FACULTAD DE CIENCIAS BÁSICAS E INGENIERÍA — PROGRAMA DE INGENIERÍA DE SISTEMAS")
-        lbl_fac.setStyleSheet("color: #00d2ff; font-size: 12px; font-weight: 700; letter-spacing: 0.8px;")
+        lbl_fac.setStyleSheet("color: #1565C0; font-size: 12px; font-weight: 700; letter-spacing: 0.8px;")
         lbl_fac.setAlignment(Qt.AlignmentFlag.AlignCenter)
         h_layout.addWidget(lbl_fac)
 
         lbl_proj_title = QLabel("Reconocedor y Clasificador de Caracteres en Tiempo Real 2D/3D mediante HMM")
-        lbl_proj_title.setStyleSheet("color: #58a6ff; font-size: 16px; font-weight: 800; margin-top: 6px;")
+        lbl_proj_title.setStyleSheet("color: #1565C0; font-size: 16px; font-weight: 800; margin-top: 6px;")
         lbl_proj_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         h_layout.addWidget(lbl_proj_title)
 

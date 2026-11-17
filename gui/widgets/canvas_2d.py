@@ -44,7 +44,8 @@ class Canvas2D(QWidget):
         # Barra de botones flotante en la esquina superior izquierda
         self.overlay_toolbar = None
 
-        self.setStyleSheet("background-color: #0b0e14; border-radius: 12px;")
+        # Estilo del lienzo (restringido a Canvas2D para no sobreescribir los botones overlay)
+        self.setStyleSheet("Canvas2D { background-color: #F5F7FA; border-radius: 12px; }")
 
     def clear_canvas(self):
         """Limpia todos los trazos y proyecciones del lienzo."""
@@ -159,8 +160,8 @@ class Canvas2D(QWidget):
         # 1. Fondo milimétrico cartesiano sutil
         self._draw_cartesian_grid(painter, w, h)
 
-        # 2. Trazos completados anteriormente (en azul hielo / gris nítido)
-        pen_completed = QPen(QColor(203, 213, 225, 230), 4.0)
+        # 2. Trazos completados anteriormente (en azul marino oscuro)
+        pen_completed = QPen(QColor(21, 101, 192, 220), 4.0)
         pen_completed.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen_completed.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen_completed)
@@ -174,10 +175,10 @@ class Canvas2D(QWidget):
                     path.lineTo(pt[0], pt[1])
                 painter.drawPath(path)
 
-        # 3. Trazo activo actual (en cian fluorescente con brillo)
+        # 3. Trazo activo actual (en azul eléctrico con brillo)
         if len(self.current_stroke) >= 2:
             # Resplandor exterior suave
-            glow_pen = QPen(QColor(0, 210, 255, 60), 8.0)
+            glow_pen = QPen(QColor(25, 118, 210, 60), 8.0)
             glow_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             glow_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(glow_pen)
@@ -189,7 +190,7 @@ class Canvas2D(QWidget):
             painter.drawPath(path)
 
             # Núcleo nítido del trazo activo
-            active_pen = QPen(QColor(0, 229, 255), 4.0)
+            active_pen = QPen(QColor(13, 71, 161), 4.0)
             active_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             active_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(active_pen)
@@ -201,15 +202,15 @@ class Canvas2D(QWidget):
         # 5. Indicador del cursor del lápiz
         if self.cursor_pos:
             cx, cy = self.cursor_pos
-            painter.setPen(QPen(QColor(0, 210, 255, 180), 1.5))
-            painter.setBrush(QColor(0, 210, 255, 50))
+            painter.setPen(QPen(QColor(21, 101, 192, 180), 1.5))
+            painter.setBrush(QColor(21, 101, 192, 50))
             painter.drawEllipse(QPointF(cx, cy), 6.0, 6.0)
             painter.setBrush(QColor(255, 255, 255))
             painter.drawEllipse(QPointF(cx, cy), 2.0, 2.0)
 
         # 6. Mensaje instructivo si el lienzo está completamente vacío
         if not self.all_strokes and not self.current_stroke:
-            painter.setPen(QColor(139, 148, 158, 120))
+            painter.setPen(QColor(100, 120, 160, 120))
             font = QFont("Segoe UI", 14, QFont.Weight.DemiBold)
             painter.setFont(font)
             text_rect = QRectF(0, h * 0.45, w, 40)
@@ -222,7 +223,7 @@ class Canvas2D(QWidget):
     def _draw_cartesian_grid(self, painter, w, h):
         """Dibuja una grilla técnica milimétrica suave."""
         grid_step = 30
-        pen_minor = QPen(QColor(30, 36, 46, 100), 1.0)
+        pen_minor = QPen(QColor(180, 195, 215, 100), 1.0)
         painter.setPen(pen_minor)
 
         # Líneas verticales
@@ -234,7 +235,7 @@ class Canvas2D(QWidget):
             painter.drawLine(0, y, w, y)
 
         # Ejes centrales ligeramente más marcados
-        pen_major = QPen(QColor(48, 54, 61, 160), 1.2)
+        pen_major = QPen(QColor(140, 165, 200, 160), 1.2)
         painter.setPen(pen_major)
         mid_x, mid_y = w // 2, h // 2
         painter.drawLine(mid_x, 0, mid_x, h)

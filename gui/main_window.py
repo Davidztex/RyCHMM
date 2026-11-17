@@ -70,9 +70,9 @@ class MainWindow(QMainWindow):
         status_bar = QStatusBar(self)
         status_bar.setStyleSheet("""
             QStatusBar {
-                background-color: #0d1117;
-                color: #8b949e;
-                border-top: 1px solid #21262d;
+                background-color: #1565C0;
+                color: #FFFFFE;
+                border-top: 1px solid #0D47A1;
                 font-size: 11px;
                 padding: 4px 12px;
             }
@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel(
             f"✓ Estado: {n_models}/27 Modelos HMM Activos"
         )
-        self.status_label.setStyleSheet("color: #00d2ff; font-weight: 600;")
+        self.status_label.setStyleSheet("color: #FFFFFE; font-weight: 600;")
         status_bar.addWidget(self.status_label)
 
     def go_to_menu(self):
